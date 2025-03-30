@@ -2,14 +2,17 @@ use std::env;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io;
-use std::io::prelude::*;
+use std::io::BufRead;
 use std::io::BufWriter;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
 
-struct Options {
+struct Options<'a> {
     append: bool,
-    file: String,
+    file: &'a Path,
 }
 
 fn usage() {
@@ -21,11 +24,11 @@ fn main() -> io::Result<()> {
     let options = match args.len() {
         2 => Options {
             append: args[0].eq("-a"),
-            file: args[1].clone(),
+            file: Path::new(&args[1]),
         },
         1 => Options {
             append: false,
-            file: args[0].clone(),
+            file: Path::new(&args[0]),
         },
         _ => {
             usage();
@@ -34,10 +37,26 @@ fn main() -> io::Result<()> {
     };
 
     let tmpfilename = soak(&options)?;
+    squeeze(&tmpfilename, options.file)?;
 
-    fs::copy(&tmpfilename, options.file)?;
-    fs::remove_file(&tmpfilename)?;
+    Ok(())
+}
 
+fn squeeze(tmpfilename: &PathBuf, target: &Path) -> io::Result<()> {
+    let original_mode = match fs::metadata(target) {
+        Ok(meta) => Some(meta.permissions().mode()),
+        Err(_) => None,
+    };
+
+    if fs::rename(tmpfilename, target).is_err() {
+        fs::copy(tmpfilename, target)?;
+        fs::remove_file(tmpfilename)?;
+    }
+
+    if let Some(mode) = original_mode {
+        let mut permissions = fs::metadata(target)?.permissions();
+        permissions.set_mode(mode);
+    }
     Ok(())
 }
 
@@ -48,7 +67,7 @@ fn soak(options: &Options) -> io::Result<PathBuf> {
     let tmpfile = env::temp_dir().join(format!("sponge.{}", std::process::id()));
 
     if options.append {
-        fs::copy(&options.file, &tmpfile)?;
+        fs::copy(options.file, &tmpfile)?;
     }
     let file = OpenOptions::new()
         .create(true)
