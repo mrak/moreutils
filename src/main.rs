@@ -14,10 +14,6 @@ fn main() -> io::Result<()> {
         .unwrap();
     match cmd {
         "sponge" => sponge::sponge(),
-        "vipe" => {
-            println!("vipe");
-            Ok(())
-        }
         x => panic!("not implemented: {}", x),
     }
 }
