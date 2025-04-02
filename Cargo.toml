@@ -1,4 +1,4 @@
 [package]
-name = "sponge"
+name = "moarutils"
 version = "0.1.0"
 edition = "2021"
