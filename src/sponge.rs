@@ -6,22 +6,11 @@ use std::io::Write;
 use std::path::Path;
 use std::process::exit;
 
-struct Options<'a> {
-    append: bool,
-    file: &'a Path,
-}
-
 pub fn sponge() -> io::Result<()> {
     let args: Vec<String> = env::args().skip(1).collect();
-    let options = match args.len() {
-        2 => Options {
-            append: args[0].eq("-a"),
-            file: Path::new(&args[1]),
-        },
-        1 => Options {
-            append: false,
-            file: Path::new(&args[0]),
-        },
+    let (append, file) = match args.len() {
+        2 => (args[0].eq("-a"), Path::new(&args[1])),
+        1 => (false, Path::new(&args[0])),
         _ => {
             println!("sponge [-a] FILE");
             exit(1)
@@ -35,9 +24,9 @@ pub fn sponge() -> io::Result<()> {
 
     OpenOptions::new()
         .create(true)
-        .append(options.append)
+        .append(append)
         .write(true)
-        .open(options.file)?
+        .open(file)?
         .write_all(&buffer)?;
 
     Ok(())
