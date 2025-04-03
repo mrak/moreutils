@@ -1,4 +1,3 @@
-use moarutils::sponge;
 use std::env;
 use std::ffi::OsStr;
 use std::io;
@@ -13,7 +12,8 @@ fn main() -> io::Result<()> {
         .and_then(OsStr::to_str)
         .unwrap();
     match cmd {
-        "sponge" => sponge::sponge(),
+        "sponge" => moarutils::sponge(),
+        "vipe" => moarutils::vipe(),
         x => panic!("not implemented: {}", x),
     }
 }
