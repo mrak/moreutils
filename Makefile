@@ -6,3 +6,4 @@ install: symlinks
 symlinks:
 	ln -sf moarutils ${HOME}/.local/bin/sponge
 	ln -sf moarutils ${HOME}/.local/bin/vipe
+	ln -sf moarutils ${HOME}/.local/bin/vidir

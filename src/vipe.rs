@@ -7,6 +7,8 @@ use std::process::exit;
 use std::process::Command;
 use std::process::Stdio;
 
+use crate::common;
+
 fn usage() {
     println!("Usage: vipe [--suffix=extension]");
 }
@@ -53,9 +55,7 @@ fn stdin_to_tmpfile(tmpfile: &Path) -> io::Result<()> {
 }
 
 fn edit_tmpfile(tmpfile: &Path) -> io::Result<()> {
-    let editor = env::var("VISUAL")
-        .map_err(|_| env::var("EDITOR"))
-        .unwrap_or("vi".to_owned());
+    let editor = common::get_editor();
 
     let tty_in = OpenOptions::new().read(true).open("/dev/tty")?;
     let tty_out = OpenOptions::new().write(true).open("/dev/tty")?;
