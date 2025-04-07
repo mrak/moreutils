@@ -60,15 +60,18 @@ fn edit_tmpfile(tmpfile: &Path) -> io::Result<()> {
     let tty_in = OpenOptions::new().read(true).open("/dev/tty")?;
     let tty_out = OpenOptions::new().write(true).open("/dev/tty")?;
 
-    let mut cmd = Command::new(editor)
+    let status = Command::new(&editor)
         .arg(tmpfile)
         .stdin(Stdio::from(tty_in))
         .stdout(Stdio::from(tty_out))
-        .spawn()?;
+        .status()?;
 
-    cmd.wait()?;
-
-    Ok(())
+    if status.success() {
+        Ok(())
+    } else {
+        eprintln!("{} exited nonzero, aborting", editor);
+        exit(1)
+    }
 }
 
 fn tmpfile_to_stdout(tmpfile: &Path) -> Result<(), io::Error> {
