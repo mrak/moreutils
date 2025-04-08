@@ -13,7 +13,9 @@ fn main() -> io::Result<()> {
         .unwrap();
     match cmd {
         "sponge" => moarutils::sponge(),
+        "ts" => moarutils::ts(),
         "vipe" => moarutils::vipe(),
+        // "vidir" => moarutils::vidir(),
         x => panic!("not implemented: {}", x),
     }
 }

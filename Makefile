@@ -1,9 +1,14 @@
-.PHONY = install
+.PHONY: install symlinks uninstall
+IMPLEMENTED := sponge vipe ts
+SYMLINKS := $(addprefix ${HOME}/.local/bin/, $(IMPLEMENTED))
 
 install: symlinks
 	cargo install --path . --root ${HOME}/.local
 
-symlinks:
-	ln -sf moarutils ${HOME}/.local/bin/sponge
-	ln -sf moarutils ${HOME}/.local/bin/vipe
-	ln -sf moarutils ${HOME}/.local/bin/vidir
+uninstall:
+	rm $(SYMLINKS)
+
+symlinks: $(SYMLINKS)
+
+$(SYMLINKS):
+	ln -sf moarutils $@

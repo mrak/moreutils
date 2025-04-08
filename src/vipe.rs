@@ -3,14 +3,14 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io;
 use std::path::Path;
-use std::process::exit;
 use std::process::Command;
 use std::process::Stdio;
+use std::process::exit;
 
 use crate::common;
 
 fn usage() {
-    println!("Usage: vipe [--suffix=extension]");
+    println!("Usage: vipe [--suffix=EXTENSION]");
 }
 
 pub fn vipe() -> io::Result<()> {

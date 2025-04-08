@@ -6,13 +6,17 @@ use std::io::Write;
 use std::path::Path;
 use std::process::exit;
 
+fn usage() {
+    println!("Usage: sponge [-a] FILE");
+}
+
 pub fn sponge() -> io::Result<()> {
     let args: Vec<String> = env::args().skip(1).collect();
     let (append, file) = match args.len() {
         2 => (args[0].eq("-a"), Path::new(&args[1])),
         1 => (false, Path::new(&args[0])),
         _ => {
-            println!("sponge [-a] FILE");
+            usage();
             exit(1)
         }
     };
