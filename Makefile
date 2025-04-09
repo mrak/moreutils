@@ -11,4 +11,4 @@ uninstall:
 symlinks: $(SYMLINKS)
 
 $(SYMLINKS):
-	ln -sf moarutils $@
+	ln -sf moreutils $@

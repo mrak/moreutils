@@ -12,10 +12,10 @@ fn main() -> io::Result<()> {
         .and_then(OsStr::to_str)
         .unwrap();
     match cmd {
-        "sponge" => moarutils::sponge(),
-        "ts" => moarutils::ts(),
-        "vipe" => moarutils::vipe(),
-        // "vidir" => moarutils::vidir(),
+        "sponge" => moreutils::sponge(),
+        "ts" => moreutils::ts(),
+        "vipe" => moreutils::vipe(),
+        // "vidir" => moreutils::vidir(),
         x => panic!("not implemented: {}", x),
     }
 }
