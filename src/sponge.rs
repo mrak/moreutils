@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::exit;
 
 fn usage() {
-    println!("Usage: sponge [-a] FILE");
+    eprintln!("Usage: sponge [-a] FILE");
 }
 
 pub fn sponge() -> io::Result<()> {

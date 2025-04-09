@@ -4,7 +4,7 @@ use std::io::BufRead;
 use std::process;
 
 fn usage() {
-    println!("Usage: ts [-r] [-i|-s] [-m] [FORMAT]");
+    eprintln!("Usage: ts [-r] [-i|-s] [-m] [FORMAT]");
 }
 
 enum TimeMode {
@@ -23,19 +23,21 @@ pub fn ts() -> io::Result<()> {
     let args = env::args().skip(1);
     for arg in args {
         match arg.as_ref() {
-            "-r" => relative = true,
-            "-i" => time_mode = TimeMode::Incremental,
-            "-s" => time_mode = TimeMode::SinceStart,
-            "-m" => monotonic = true,
             "--" => double_dash = true,
-            "-h" | "--help" => {
-                usage();
-                process::exit(0)
-            }
             x if x.starts_with("-") && !double_dash => {
-                eprintln!("unknown argument {}", x);
-                usage();
-                process::exit(1);
+                for flag in x.chars().skip(1) {
+                    match flag {
+                        'r' => relative = true,
+                        'i' => time_mode = TimeMode::Incremental,
+                        's' => time_mode = TimeMode::SinceStart,
+                        'm' => monotonic = true,
+                        c => {
+                            eprintln!("Unknown option: {}", c);
+                            usage();
+                            process::exit(1);
+                        }
+                    }
+                }
             }
             x => format_arg = Some(x.to_owned()),
         }
@@ -49,8 +51,38 @@ pub fn ts() -> io::Result<()> {
 
     let stdin = io::stdin();
     let stdin = stdin.lock();
-    for line in stdin.lines().map_while(|l| l.ok()) {
-        println!("{} {}", chrono::Local::now().format(&format), line);
+
+    match time_mode {
+        TimeMode::Absolute => {
+            for line in stdin.lines().map_while(|l| l.ok()) {
+                println!("{} {}", chrono::Local::now().format(&format), line);
+            }
+        }
+        TimeMode::Incremental => {
+            let mut last = chrono::Local::now();
+
+            for line in stdin.lines().map_while(|l| l.ok()) {
+                let delta = chrono::Local::now() - last;
+                last = chrono::Local::now();
+                println!(
+                    "{} {}",
+                    (chrono::NaiveDateTime::UNIX_EPOCH + delta).format(&format),
+                    line
+                );
+            }
+        }
+        TimeMode::SinceStart => {
+            let last = chrono::Local::now();
+
+            for line in stdin.lines().map_while(|l| l.ok()) {
+                let delta = chrono::Local::now() - last;
+                println!(
+                    "{} {}",
+                    (chrono::NaiveDateTime::UNIX_EPOCH + delta).format(&format),
+                    line
+                );
+            }
+        }
     }
     Ok(())
 }
