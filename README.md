@@ -6,4 +6,4 @@ My reimplementation of some of the fantastic utilities from `moreutils`
 
 * `sponge`
 * `vipe`
-* `ts` (partial)
+* `ts`
