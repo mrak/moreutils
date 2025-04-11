@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-chrono = "0.4"
-regex = "1.11"
+chrono = { version = "0.4", default-features = false, features = ["alloc", "std", "clock", "now"] }
+regex = { version = "1.11", default-features = false, featuers = ["std", "perf", "unicode-perl"] }
