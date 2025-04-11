@@ -10,7 +10,7 @@ use std::process::exit;
 use crate::common;
 
 fn usage() {
-    println!("Usage: vipe [--suffix=EXTENSION]");
+    eprintln!("Usage: vipe [--suffix=EXTENSION]");
 }
 
 pub fn vipe() -> io::Result<()> {
