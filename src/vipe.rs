@@ -33,13 +33,19 @@ pub fn vipe() -> io::Result<()> {
     }
     let tmpfile = env::temp_dir().join(tmpfilename);
 
-    stdin_to_tmpfile(&tmpfile)?;
-    edit_tmpfile(&tmpfile)?;
-    tmpfile_to_stdout(&tmpfile)?;
+    let result = stdin_to_tmpfile(&tmpfile)
+        .and_then(|_| edit_tmpfile(&tmpfile))
+        .and_then(|_| tmpfile_to_stdout(&tmpfile));
 
-    std::fs::remove_file(tmpfile)?;
+    let _ = std::fs::remove_file(tmpfile);
 
-    Ok(())
+    match result {
+        Err(e) if e.kind() == io::ErrorKind::Other => {
+            eprintln!("{}", e);
+            exit(1)
+        }
+        _ => result,
+    }
 }
 
 fn stdin_to_tmpfile(tmpfile: &Path) -> io::Result<()> {
@@ -69,8 +75,10 @@ fn edit_tmpfile(tmpfile: &Path) -> io::Result<()> {
     if status.success() {
         Ok(())
     } else {
-        eprintln!("{} exited nonzero, aborting", editor);
-        exit(1)
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("{} exited nonzero, aborting", editor),
+        ))
     }
 }
 
