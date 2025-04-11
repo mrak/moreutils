@@ -1,7 +1,8 @@
 use chrono::DateTime;
 use chrono::Local;
 use chrono::NaiveDateTime;
-use chrono::prelude::*;
+use chrono::TimeDelta;
+use core::convert::From;
 use regex::Captures;
 use regex::Regex;
 use std::env;
@@ -145,20 +146,53 @@ fn with_system_clock(stdin: StdinLock, mode: TimeMode, format: &str) {
 }
 
 fn time_is_relative(stdin: StdinLock, format: Option<String>) {
-    let syslog = Regex::new(r"\b(?<syslog>\w{3}\s{1,2}\d{1,2}\s{1,2}\d\d:\d\d:\d\d)\b").unwrap();
+    let mut pattern = String::from(r"\b");
+    pattern.push_str(r"(?<syslog>\w{3}(\s\d|\s\s)\d\s\d\d:\d\d:\d\d)");
+    pattern.push_str(r"\b");
+    let re = Regex::new(&pattern).unwrap();
+
     for line in stdin.lines().map_while(|l| l.ok()) {
-        let mut changed = false;
-        syslog.replace(&line, |caps: &Captures| {
-            changed = true;
-            let dt = DateTime::parse_from_str(&caps["syslog"], "").expect("syslog format matched");
+        let modified = re.replace(&line, |caps: &Captures| {
+            let dt = if let Some(syslog) = caps.name("syslog") {
+                let now = Local::now();
+                let hydrated = format!("{} {}", syslog.as_str(), now.format("%z %Y"));
+                DateTime::parse_from_str(&hydrated, "%b %e %H:%M:%S %z %Y")
+                    .expect("syslog rfc3164 matched")
+            } else {
+                unreachable!();
+            };
             if let Some(f) = &format {
                 dt.format(f).to_string()
             } else {
-                caps["syslog"].to_string()
+                time_ago(dt)
             }
         });
-        if changed {
-            continue;
-        }
+        println!("{}", modified);
     }
+}
+
+fn time_ago(dt: DateTime<chrono::FixedOffset>) -> String {
+    let mut delta = Local::now() - DateTime::<Local>::from(dt);
+    let mut result = String::from("");
+    if delta.num_weeks() > 0 {
+        result.push_str(&format!("{}w", delta.num_weeks()));
+        delta = delta - TimeDelta::weeks(delta.num_weeks());
+    }
+    if delta.num_days() > 0 {
+        result.push_str(&format!("{}d", delta.num_days()));
+        delta = delta - TimeDelta::days(delta.num_days());
+    }
+    if delta.num_hours() > 0 {
+        result.push_str(&format!("{}h", delta.num_hours()));
+        delta = delta - TimeDelta::hours(delta.num_hours());
+    }
+    if delta.num_minutes() > 0 {
+        result.push_str(&format!("{}m", delta.num_minutes()));
+        delta = delta - TimeDelta::minutes(delta.num_minutes());
+    }
+    if delta.num_seconds() > 0 {
+        result.push_str(&format!("{}s", delta.num_seconds()));
+    }
+    result.push_str(" ago");
+    result
 }
