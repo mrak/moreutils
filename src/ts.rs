@@ -1,4 +1,5 @@
 use chrono::DateTime;
+use chrono::Datelike;
 use chrono::Local;
 use chrono::NaiveDateTime;
 use chrono::TimeDelta;
@@ -156,8 +157,13 @@ fn time_is_relative(stdin: StdinLock, format: Option<String>) {
             let dt = if let Some(syslog) = caps.name("syslog") {
                 let now = Local::now();
                 let hydrated = format!("{} {}", syslog.as_str(), now.format("%z %Y"));
-                DateTime::parse_from_str(&hydrated, "%b %e %H:%M:%S %z %Y")
-                    .expect("syslog rfc3164 matched")
+                let parsed = DateTime::parse_from_str(&hydrated, "%b %e %H:%M:%S %z %Y")
+                    .expect("syslog rfc3164 matched");
+                if parsed > now {
+                    parsed.with_year(now.year() - 1).unwrap()
+                } else {
+                    parsed
+                }
             } else {
                 unreachable!();
             };
