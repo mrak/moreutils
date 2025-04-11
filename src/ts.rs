@@ -180,10 +180,6 @@ fn time_is_relative(stdin: StdinLock, format: Option<String>) {
 fn time_ago(dt: DateTime<chrono::FixedOffset>) -> String {
     let mut delta = Local::now() - DateTime::<Local>::from(dt);
     let mut result = String::from("");
-    if delta.num_weeks() > 0 {
-        result.push_str(&format!("{}w", delta.num_weeks()));
-        delta = delta - TimeDelta::weeks(delta.num_weeks());
-    }
     if delta.num_days() > 0 {
         result.push_str(&format!("{}d", delta.num_days()));
         delta = delta - TimeDelta::days(delta.num_days());
