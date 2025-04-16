@@ -152,6 +152,8 @@ fn time_is_relative(stdin: StdinLock, format: Option<String>) {
     pattern.push('|');
     pattern.push_str(r"(?<rfc3339>\d\d\d\d-\d\d-\d\d[tT ]\d\d:\d\d:\d\d(Z|[+-]\d\d:?\d\d)?)");
     pattern.push('|');
+    pattern.push_str(r"(?<lastlog>\w{3}\s\w{3}\s{1,2}\d{1,2}\s\d\d:\d\d:\d\d [+-]\d{4}\s\d{4})");
+    pattern.push('|');
     pattern.push_str(
         r"(?<rfc2822>(\w{3},?\s+)?\d{1,2}\s+\w{3}\s+\d{4}\s+\d\d:\d\d(:\d\d)?(\s+[+-]\d{4}|\s+\w{3}))",
     );
@@ -174,6 +176,8 @@ fn time_is_relative(stdin: StdinLock, format: Option<String>) {
                 DateTime::parse_from_rfc3339(s.as_str()).expect("rfc3339 format matched")
             } else if let Some(s) = caps.name("rfc2822") {
                 DateTime::parse_from_rfc2822(s.as_str()).expect("rfc2282 format matched")
+            } else if let Some(s) = caps.name("lastlog") {
+                DateTime::parse_from_str(s.as_str(), "%a %b %e %H:%M:%S %z %Y").unwrap()
             } else {
                 unreachable!();
             };
@@ -213,6 +217,31 @@ fn time_ago(dt: DateTime<chrono::FixedOffset>) -> String {
 mod tests {
     use super::*;
     use chrono::{FixedOffset, TimeZone};
+
+    #[test]
+    fn lastlog() {
+        let year = 2025;
+        let month = 4;
+        let day = 1;
+        let hour = 21;
+        let minute = 2;
+        let second = 0;
+        let month_name = "Apr";
+        let day_name = "Tue";
+        let formats = vec![format!(
+            "{day_name} {month_name} {day} {hour:02}:{minute:02}:{second:02} +0000 {year}"
+        )];
+        let expected = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2025, 4, 1, 21, 2, 0)
+            .unwrap();
+        for f in formats {
+            assert_eq!(
+                expected,
+                DateTime::parse_from_str(&f, "%a %b %e %H:%M:%S %z %Y").unwrap()
+            )
+        }
+    }
 
     #[test]
     fn rfc2822() {
