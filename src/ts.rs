@@ -148,22 +148,32 @@ fn with_system_clock(stdin: StdinLock, mode: TimeMode, format: &str) {
 
 fn time_is_relative(stdin: StdinLock, format: Option<String>) {
     let mut pattern = String::from(r"\b");
-    pattern.push_str(r"(?<syslog>\w{3}(\s\d|\s\s)\d\s\d\d:\d\d:\d\d)");
+    pattern.push_str(r"(?<rfc3164>\w{3}(\s\d|\s\s)\d\s\d\d:\d\d:\d\d)");
+    pattern.push('|');
+    pattern.push_str(r"(?<rfc3339>\d\d\d\d-\d\d-\d\d[tT ]\d\d:\d\d:\d\d(Z|[+-]\d\d:?\d\d)?)");
+    pattern.push('|');
+    pattern.push_str(
+        r"(?<rfc2822>(\w{3},?\s+)?\d{1,2}\s+\w{3}\s+\d{4}\s+\d\d:\d\d(:\d\d)?(\s+[+-]\d{4}|\s+\w{3}))",
+    );
     pattern.push_str(r"\b");
     let re = Regex::new(&pattern).unwrap();
 
     for line in stdin.lines().map_while(|l| l.ok()) {
         let modified = re.replace(&line, |caps: &Captures| {
-            let dt = if let Some(syslog) = caps.name("syslog") {
+            let dt = if let Some(s) = caps.name("rfc3164") {
                 let now = Local::now();
-                let hydrated = format!("{} {}", syslog.as_str(), now.format("%z %Y"));
+                let hydrated = format!("{} {}", s.as_str(), now.format("%z %Y"));
                 let parsed = DateTime::parse_from_str(&hydrated, "%b %e %H:%M:%S %z %Y")
-                    .expect("syslog rfc3164 matched");
+                    .expect("syslog rfc3164 format matched");
                 if parsed > now {
                     parsed.with_year(now.year() - 1).unwrap()
                 } else {
                     parsed
                 }
+            } else if let Some(s) = caps.name("rfc3339") {
+                DateTime::parse_from_rfc3339(s.as_str()).expect("rfc3339 format matched")
+            } else if let Some(s) = caps.name("rfc2822") {
+                DateTime::parse_from_rfc2822(s.as_str()).expect("rfc2282 format matched")
             } else {
                 unreachable!();
             };
@@ -197,4 +207,62 @@ fn time_ago(dt: DateTime<chrono::FixedOffset>) -> String {
     }
     result.push_str(" ago");
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{FixedOffset, TimeZone};
+
+    #[test]
+    fn rfc2822() {
+        let year = 2025;
+        let month = 4;
+        let day = 14;
+        let hour = 21;
+        let minute = 2;
+        let second = 0;
+        let month_name = "Apr";
+        let day_name = "Mon";
+        let formats = vec![
+            format!(
+                "{day_name}, {day} {month_name} {year} {hour:02}:{minute:02}:{second:02} +0000"
+            ),
+            format!("{day_name}, {day} {month_name} {year} {hour:02}:{minute:02}:{second:02} GMT"),
+            format!("{day} {month_name} {year} {hour:02}:{minute:02}:{second:02} GMT"),
+        ];
+        let expected = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2025, 4, 14, 21, 2, 0)
+            .unwrap();
+        for f in formats {
+            assert_eq!(expected, DateTime::parse_from_rfc2822(&f).unwrap())
+        }
+    }
+
+    #[test]
+    fn rfc3339() {
+        let year = 2025;
+        let month = 4;
+        let day = 14;
+        let hour = 21;
+        let minute = 2;
+        let second = 0;
+        let formats = vec![
+            format!("{year}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"),
+            format!("{year}-{month:02}-{day:02}t{hour:02}:{minute:02}:{second:02}Z"),
+            format!("{year}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}Z"),
+            format!("{year}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}z"),
+            format!("{year}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}z"),
+            format!("{year}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}-00:00"),
+            format!("{year}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}+00:00"),
+        ];
+        let expected = FixedOffset::east_opt(0)
+            .unwrap()
+            .with_ymd_and_hms(2025, 4, 14, 21, 2, 0)
+            .unwrap();
+        for f in formats {
+            assert_eq!(expected, DateTime::parse_from_rfc3339(&f).unwrap())
+        }
+    }
 }
