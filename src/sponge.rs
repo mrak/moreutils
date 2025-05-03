@@ -29,6 +29,7 @@ pub fn sponge() -> io::Result<()> {
     OpenOptions::new()
         .create(true)
         .append(append)
+        .truncate(!append)
         .write(true)
         .open(file)?
         .write_all(&buffer)?;
