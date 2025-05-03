@@ -3,13 +3,18 @@ use chrono::Datelike;
 use chrono::Local;
 use chrono::NaiveDateTime;
 use chrono::TimeDelta;
+use chrono::TimeZone;
 use core::convert::From;
 use regex::Captures;
 use regex::Regex;
 use std::env;
+use std::fmt::Write as FmtWrite; // Avoid conflict with io::Write
 use std::io;
 use std::io::BufRead;
+use std::io::BufWriter;
 use std::io::StdinLock;
+use std::io::StdoutLock;
+use std::io::Write;
 use std::process;
 use std::time::Instant;
 
@@ -55,10 +60,11 @@ pub fn ts() -> io::Result<()> {
 
     let stdin = io::stdin();
     let stdin = stdin.lock();
+    let stdout = io::stdout();
+    let mut stdout = BufWriter::new(stdout.lock());
 
     if relative {
-        time_is_relative(stdin, format_arg);
-        return Ok(());
+        return time_is_relative(stdin, &mut stdout, format_arg);
     }
 
     let format_default = match time_mode {
@@ -68,20 +74,30 @@ pub fn ts() -> io::Result<()> {
     let format = format_arg.unwrap_or(format_default);
 
     if monotonic {
-        with_monotonic_clock(stdin, time_mode, &format);
+        with_monotonic_clock(stdin, &mut stdout, time_mode, &format)?;
     } else {
-        with_system_clock(stdin, time_mode, &format);
+        with_system_clock(stdin, &mut stdout, time_mode, &format)?;
     }
     Ok(())
 }
 
-fn with_monotonic_clock(stdin: StdinLock, mode: TimeMode, format: &str) {
+fn with_monotonic_clock(
+    stdin: StdinLock,
+    stdout: &mut BufWriter<StdoutLock>,
+    mode: TimeMode,
+    format: &str,
+) -> io::Result<()> {
     match mode {
         TimeMode::Absolute => {
             let start_mono = Instant::now();
             let start = Local::now() - start_mono.elapsed();
             for line in stdin.lines().map_while(|l| l.ok()) {
-                println!("{} {}", (start + start_mono.elapsed()).format(format), line);
+                writeln!(
+                    stdout,
+                    "{} {}",
+                    (start + start_mono.elapsed()).format(format),
+                    line
+                )?;
             }
         }
         TimeMode::Incremental => {
@@ -91,31 +107,39 @@ fn with_monotonic_clock(stdin: StdinLock, mode: TimeMode, format: &str) {
                 let next = Instant::now();
                 let delta = next - last;
                 last = next;
-                println!(
+                writeln!(
+                    stdout,
                     "{} {}",
                     (NaiveDateTime::UNIX_EPOCH + delta).format(format),
                     line
-                );
+                )?;
             }
         }
         TimeMode::SinceStart => {
             let start_mono = Instant::now();
             for line in stdin.lines().map_while(|l| l.ok()) {
-                println!(
+                writeln!(
+                    stdout,
                     "{} {}",
                     (NaiveDateTime::UNIX_EPOCH + start_mono.elapsed()).format(format),
                     line
-                );
+                )?;
             }
         }
     }
+    Ok(())
 }
 
-fn with_system_clock(stdin: StdinLock, mode: TimeMode, format: &str) {
+fn with_system_clock(
+    stdin: StdinLock,
+    stdout: &mut BufWriter<StdoutLock>,
+    mode: TimeMode,
+    format: &str,
+) -> io::Result<()> {
     match mode {
         TimeMode::Absolute => {
             for line in stdin.lines().map_while(|l| l.ok()) {
-                println!("{} {}", chrono::Local::now().format(format), line);
+                writeln!(stdout, "{} {}", chrono::Local::now().format(format), line)?;
             }
         }
         TimeMode::Incremental => {
@@ -124,33 +148,41 @@ fn with_system_clock(stdin: StdinLock, mode: TimeMode, format: &str) {
             for line in stdin.lines().map_while(|l| l.ok()) {
                 let delta = Local::now() - last;
                 last = Local::now();
-                println!(
+                writeln!(
+                    stdout,
                     "{} {}",
                     (chrono::NaiveDateTime::UNIX_EPOCH + delta).format(format),
                     line
-                );
+                )?;
             }
         }
         TimeMode::SinceStart => {
-            let last = Local::now();
+            let start = Local::now();
 
             for line in stdin.lines().map_while(|l| l.ok()) {
-                let delta = Local::now() - last;
-                println!(
+                let delta = Local::now() - start;
+                writeln!(
+                    stdout,
                     "{} {}",
                     (chrono::NaiveDateTime::UNIX_EPOCH + delta).format(format),
                     line
-                );
+                )?;
             }
         }
     }
+    Ok(())
 }
 
-fn time_is_relative(stdin: StdinLock, format: Option<String>) {
+fn time_is_relative(
+    stdin: StdinLock,
+    stdout: &mut BufWriter<StdoutLock>,
+    format: Option<String>,
+) -> io::Result<()> {
     let mut pattern = String::from(r"\b");
     pattern.push_str(r"(?<rfc3164>\w{3}(\s\d|\s\s)\d\s\d\d:\d\d:\d\d)");
     pattern.push('|');
-    pattern.push_str(r"(?<rfc3339>\d\d\d\d-\d\d-\d\d[tT ]\d\d:\d\d:\d\d(Z|[+-]\d\d:?\d\d)?)");
+    pattern
+        .push_str(r"(?<rfc3339>\d\d\d\d-\d\d-\d\d[tT ]\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:?\d\d)?)");
     pattern.push('|');
     pattern.push_str(r"(?<lastlog>\w{3}\s\w{3}\s{1,2}\d{1,2}\s\d\d:\d\d:\d\d [+-]\d{4}\s\d{4})");
     pattern.push('|');
@@ -158,59 +190,84 @@ fn time_is_relative(stdin: StdinLock, format: Option<String>) {
         r"(?<rfc2822>(\w{3},?\s+)?\d{1,2}\s+\w{3}\s+\d{4}\s+\d\d:\d\d(:\d\d)?(\s+[+-]\d{4}|\s+\w{3}))",
     );
     pattern.push_str(r"\b");
-    let re = Regex::new(&pattern).unwrap();
+    let re = Regex::new(&pattern).expect("compile static regex");
 
     for line in stdin.lines().map_while(|l| l.ok()) {
         let modified = re.replace(&line, |caps: &Captures| {
-            let dt = if let Some(s) = caps.name("rfc3164") {
+            let dt_result = if let Some(s) = caps.name("rfc3164") {
                 let now = Local::now();
+                // RFC3164 doesn't include year or timezone, assume current year/zone
                 let hydrated = format!("{} {}", s.as_str(), now.format("%z %Y"));
-                let parsed = DateTime::parse_from_str(&hydrated, "%b %e %H:%M:%S %z %Y")
-                    .expect("syslog rfc3164 format matched");
-                if parsed > now {
-                    parsed.with_year(now.year() - 1).unwrap()
-                } else {
-                    parsed
-                }
+                DateTime::parse_from_str(&hydrated, "%b %e %H:%M:%S %z %Y")
+                    .ok()
+                    .and_then(|parsed| {
+                        // If parsed date is in the future, assume it was last year
+                        if parsed > now {
+                            parsed.with_year(now.year() - 1)
+                        } else {
+                            Some(parsed)
+                        }
+                    })
             } else if let Some(s) = caps.name("rfc3339") {
-                DateTime::parse_from_rfc3339(s.as_str()).expect("rfc3339 format matched")
+                DateTime::parse_from_rfc3339(s.as_str()).ok()
             } else if let Some(s) = caps.name("rfc2822") {
-                DateTime::parse_from_rfc2822(s.as_str()).expect("rfc2282 format matched")
+                DateTime::parse_from_rfc2822(s.as_str()).ok()
             } else if let Some(s) = caps.name("lastlog") {
-                DateTime::parse_from_str(s.as_str(), "%a %b %e %H:%M:%S %z %Y").unwrap()
+                DateTime::parse_from_str(s.as_str(), "%a %b %e %H:%M:%S %z %Y").ok()
             } else {
-                unreachable!();
+                None // Should be unreachable due to regex structure
             };
-            if let Some(f) = &format {
-                dt.format(f).to_string()
+
+            // If parsing succeeded, format it; otherwise, keep original string
+            if let Some(dt) = dt_result {
+                if let Some(f) = &format {
+                    dt.format(f).to_string()
+                } else {
+                    time_ago(dt.into()) // Convert to DateTime<Local> for time_ago
+                }
             } else {
-                time_ago(dt)
+                // Parsing failed, return the original matched text
+                caps.get(0).map_or("", |m| m.as_str()).to_string()
             }
         });
-        println!("{}", modified);
+        writeln!(stdout, "{}", modified)?;
     }
+    Ok(())
 }
 
-fn time_ago(dt: DateTime<chrono::FixedOffset>) -> String {
-    let mut delta = Local::now() - DateTime::<Local>::from(dt);
-    let mut result = String::from("");
+fn time_ago(dt: DateTime<Local>) -> String {
+    let now = Local::now();
+    let mut delta = now - dt;
+
+    // Handle cases slightly in the future due to clock skew or rounding
+    if delta < TimeDelta::zero() {
+        return "just now".to_string();
+    }
+
+    let mut result = String::with_capacity(20); // Pre-allocate roughly
+
     if delta.num_days() > 0 {
-        result.push_str(&format!("{}d", delta.num_days()));
+        write!(result, "{}d", delta.num_days()).unwrap();
         delta = delta - TimeDelta::days(delta.num_days());
     }
     if delta.num_hours() > 0 {
-        result.push_str(&format!("{}h", delta.num_hours()));
+        write!(result, "{}h", delta.num_hours()).unwrap();
         delta = delta - TimeDelta::hours(delta.num_hours());
     }
     if delta.num_minutes() > 0 {
-        result.push_str(&format!("{}m", delta.num_minutes()));
+        write!(result, "{}m", delta.num_minutes()).unwrap();
         delta = delta - TimeDelta::minutes(delta.num_minutes());
     }
     if delta.num_seconds() > 0 {
-        result.push_str(&format!("{}s", delta.num_seconds()));
+        write!(result, "{}s", delta.num_seconds()).unwrap();
     }
-    result.push_str(" ago");
-    result
+
+    if result.is_empty() {
+        "just now".to_string()
+    } else {
+        result.push_str(" ago");
+        result
+    }
 }
 
 #[cfg(test)]
