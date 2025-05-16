@@ -1,5 +1,5 @@
 .PHONY: install symlinks uninstall
-IMPLEMENTED := sponge vipe ts
+IMPLEMENTED := sponge vipe ts vidir
 SYMLINKS := $(addprefix ${HOME}/.local/bin/, $(IMPLEMENTED))
 
 install: symlinks

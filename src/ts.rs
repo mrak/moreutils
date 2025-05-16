@@ -3,7 +3,6 @@ use chrono::Datelike;
 use chrono::Local;
 use chrono::NaiveDateTime;
 use chrono::TimeDelta;
-use chrono::TimeZone;
 use core::convert::From;
 use regex::Captures;
 use regex::Regex;

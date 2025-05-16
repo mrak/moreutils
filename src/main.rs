@@ -15,7 +15,7 @@ fn main() -> io::Result<()> {
         "sponge" => moreutils::sponge(),
         "ts" => moreutils::ts(),
         "vipe" => moreutils::vipe(),
-        // "vidir" => moreutils::vidir(),
+        "vidir" => moreutils::vidir(),
         x => panic!("not implemented: {}", x),
     }
 }

@@ -3,8 +3,6 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io;
 use std::path::Path;
-use std::process::Command;
-use std::process::Stdio;
 use std::process::exit;
 
 use crate::common;
@@ -34,7 +32,7 @@ pub fn vipe() -> io::Result<()> {
     let tmpfile = env::temp_dir().join(tmpfilename);
 
     let result = stdin_to_tmpfile(&tmpfile)
-        .and_then(|_| edit_tmpfile(&tmpfile))
+        .and_then(|_| common::edit_tmpfile(&tmpfile))
         .and_then(|_| tmpfile_to_stdout(&tmpfile));
 
     let _ = std::fs::remove_file(tmpfile);
@@ -58,28 +56,6 @@ fn stdin_to_tmpfile(tmpfile: &Path) -> io::Result<()> {
     let mut stdin = stdin.lock();
     io::copy(&mut stdin, &mut file)?;
     Ok(())
-}
-
-fn edit_tmpfile(tmpfile: &Path) -> io::Result<()> {
-    let editor = common::get_editor();
-
-    let tty_in = OpenOptions::new().read(true).open("/dev/tty")?;
-    let tty_out = OpenOptions::new().write(true).open("/dev/tty")?;
-
-    let status = Command::new(&editor)
-        .arg(tmpfile)
-        .stdin(Stdio::from(tty_in))
-        .stdout(Stdio::from(tty_out))
-        .status()?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("{} exited nonzero, aborting", editor),
-        ))
-    }
 }
 
 fn tmpfile_to_stdout(tmpfile: &Path) -> Result<(), io::Error> {
