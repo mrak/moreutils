@@ -1,12 +1,11 @@
+use rand::Rng;
 use std::collections::HashSet;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Error, Write};
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::{env, fs, io, process};
-
-use rand::Rng;
 
 use crate::common;
 
@@ -73,11 +72,22 @@ fn entries_from_args() -> io::Result<(Vec<PathBuf>, bool)> {
                 let mut buffer = Vec::new();
                 let mut reader = BufReader::new(stdin.lock());
                 loop {
+                    buffer.clear();
                     let bytes_read = reader.read_until(b'\n', &mut buffer)?;
                     if bytes_read == 0 {
                         break;
                     }
-                    let pb = PathBuf::from(OsString::from_vec(buffer.clone()));
+                    let bytes = buffer
+                        .last()
+                        .map(|b| {
+                            if *b == b'\n' {
+                                &buffer[..buffer.len() - 1]
+                            } else {
+                                &buffer
+                            }
+                        })
+                        .expect("buffer has at least one byte");
+                    let pb = PathBuf::from(OsStr::from_bytes(bytes));
                     if (pb.is_file() || pb.is_symlink()) && unique_files.insert(pb.clone()) {
                         files.push(pb);
                     }
@@ -102,6 +112,8 @@ fn entries_from_args() -> io::Result<(Vec<PathBuf>, bool)> {
                         .filter(|p| unique_files.insert(p.clone()))
                         .collect();
                     files.extend(entries);
+                } else {
+                    return Err(Error::other(format!("Cannot read file or directory: {x}")));
                 }
             }
         }
@@ -146,7 +158,11 @@ fn operate_tmpfile(
             break;
         }
         let (numstr, mut rest) = buffer.split_at(format_width);
-        rest = &rest[1..rest.len() - 1];
+        rest = if rest[rest.len() - 1] == b'\n' {
+            &rest[1..rest.len() - 1]
+        } else {
+            rest
+        };
         let mut first_nonzero_i = 0;
         for (i, &b) in numstr.iter().enumerate() {
             if b != b'0' {
