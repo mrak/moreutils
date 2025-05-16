@@ -1,7 +1,6 @@
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Local;
-use chrono::NaiveDateTime;
 use chrono::TimeDelta;
 use core::convert::From;
 use regex::Captures;
@@ -109,7 +108,7 @@ fn with_monotonic_clock(
                 writeln!(
                     stdout,
                     "{} {}",
-                    (NaiveDateTime::UNIX_EPOCH + delta).format(format),
+                    (DateTime::UNIX_EPOCH + delta).format(format),
                     line
                 )?;
             }
@@ -120,7 +119,7 @@ fn with_monotonic_clock(
                 writeln!(
                     stdout,
                     "{} {}",
-                    (NaiveDateTime::UNIX_EPOCH + start_mono.elapsed()).format(format),
+                    (DateTime::UNIX_EPOCH + start_mono.elapsed()).format(format),
                     line
                 )?;
             }
@@ -150,7 +149,7 @@ fn with_system_clock(
                 writeln!(
                     stdout,
                     "{} {}",
-                    (chrono::NaiveDateTime::UNIX_EPOCH + delta).format(format),
+                    (DateTime::UNIX_EPOCH + delta).format(format),
                     line
                 )?;
             }
@@ -163,7 +162,7 @@ fn with_system_clock(
                 writeln!(
                     stdout,
                     "{} {}",
-                    (chrono::NaiveDateTime::UNIX_EPOCH + delta).format(format),
+                    (DateTime::UNIX_EPOCH + delta).format(format),
                     line
                 )?;
             }
