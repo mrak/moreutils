@@ -10,8 +10,9 @@ fn main() -> io::Result<()> {
         .map(Path::new)
         .and_then(Path::file_name)
         .and_then(OsStr::to_str)
-        .unwrap();
+        .expect("command name should be UTF-8 compliant");
     match cmd {
+        "ifne" => moreutils::ifne(),
         "sponge" => moreutils::sponge(),
         "ts" => moreutils::ts(),
         "vipe" => moreutils::vipe(),
