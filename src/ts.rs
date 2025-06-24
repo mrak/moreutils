@@ -187,6 +187,8 @@ fn time_is_relative(
     pattern.push_str(
         r"(?<rfc2822>(\w{3},?\s+)?\d{1,2}\s+\w{3}\s+\d{4}\s+\d\d:\d\d(:\d\d)?(\s+[+-]\d{4}|\s+\w{3}))",
     );
+    pattern.push('|');
+    pattern.push_str(r"(?<unixsec>[1-9]\d{9})");
     pattern.push_str(r"\b");
     let re = Regex::new(&pattern).expect("compile static regex");
 
@@ -212,6 +214,8 @@ fn time_is_relative(
                 DateTime::parse_from_rfc2822(s.as_str()).ok()
             } else if let Some(s) = caps.name("lastlog") {
                 DateTime::parse_from_str(s.as_str(), "%a %b %e %H:%M:%S %z %Y").ok()
+            } else if let Some(s) = caps.name("unixsec") {
+                DateTime::parse_from_str(s.as_str(), "%s").ok()
             } else {
                 None // Should be unreachable due to regex structure
             };
@@ -242,28 +246,31 @@ fn time_ago(dt: DateTime<Local>) -> String {
         return "just now".to_string();
     }
 
+    let mut terms = 0; // Limit to two terms, i.e. "Xd Yhr ago"
     let mut result = String::with_capacity(20); // Pre-allocate roughly
 
     if delta.num_days() > 0 {
-        write!(result, "{}d", delta.num_days()).unwrap();
+        terms += 1;
+        write!(result, "{}d ", delta.num_days()).unwrap();
         delta = delta - TimeDelta::days(delta.num_days());
     }
     if delta.num_hours() > 0 {
-        write!(result, "{}h", delta.num_hours()).unwrap();
+        terms += 1;
+        write!(result, "{}h ", delta.num_hours()).unwrap();
         delta = delta - TimeDelta::hours(delta.num_hours());
     }
-    if delta.num_minutes() > 0 {
-        write!(result, "{}m", delta.num_minutes()).unwrap();
+    if terms < 2 && delta.num_minutes() > 0 {
+        write!(result, "{}m ", delta.num_minutes()).unwrap();
         delta = delta - TimeDelta::minutes(delta.num_minutes());
     }
-    if delta.num_seconds() > 0 {
-        write!(result, "{}s", delta.num_seconds()).unwrap();
+    if terms < 2 && delta.num_seconds() > 0 {
+        write!(result, "{}s ", delta.num_seconds()).unwrap();
     }
 
     if result.is_empty() {
         "just now".to_string()
     } else {
-        result.push_str(" ago");
+        result.push_str("ago");
         result
     }
 }
