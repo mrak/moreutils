@@ -30,7 +30,27 @@ pub fn ifne() -> io::Result<()> {
     let r = stdin.read(&mut peek_buffer);
     let has_content = matches!(r, Ok(1));
 
-    if has_content {
+    if invert {
+        // -n was passed.
+        // if stdin is empty, execute program
+        // if stdin is not empty, pass through to stdout
+        if has_content {
+            let stdout = io::stdout();
+            let mut stdout = stdout.lock();
+            stdout.write_all(&peek_buffer)?;
+            io::copy(&mut stdin, &mut stdout)?;
+        } else {
+            Command::new(args.next().unwrap())
+                .args(args)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()?;
+        }
+    } else if has_content {
+        // -n was NOT passed.
+        // if stdin is not empty, execute program with stdin content
+        // if stdin is empty, do nothing
         let mut cmd = Command::new(args.next().unwrap())
             .args(args)
             .stdin(Stdio::piped())
