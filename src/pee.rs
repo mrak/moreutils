@@ -1,9 +1,12 @@
 use std::{
     env,
     ffi::OsString,
-    io::{self, BufRead, BufReader, Write},
-    process::{Command, Stdio},
+    io::{self, BufRead, Write},
+    process::{self, Command, Stdio},
+    thread,
 };
+
+use signal_hook::{consts::SIGPIPE, iterator::Signals};
 
 fn usage() {
     eprintln!("Usage: pee [--[no-]ignore-sigpipe] [--[no-]ignore-write-errors] [[\"command\"...]]");
@@ -32,6 +35,15 @@ pub fn pee() -> io::Result<()> {
         }
     }
 
+    if !ignore_sigpipe {
+        let mut signals = Signals::new([SIGPIPE])?;
+        thread::spawn(move || {
+            if let Some(sig) = signals.forever().next() {
+                process::exit(128 + sig);
+            }
+        });
+    }
+
     let mut children = Vec::new();
     for command in commands {
         let child = Command::new("/bin/sh")
@@ -46,17 +58,27 @@ pub fn pee() -> io::Result<()> {
     }
 
     let stdin = io::stdin();
-    let stdin = BufReader::new(stdin.lock());
-    let mut buffer = Vec::new();
+    let mut stdin = stdin.lock();
     loop {
-        let bytes_read = match stdin.read_until(b'\n', &mut buffer) {
-            Ok(br) => br,
-            Err(_) => break,
-        };
-        for child in children {
-            if let Some(n) = child.stdin {
-                n.write_all(&buffer);
+        let buffer = stdin.fill_buf()?;
+        let buflen = buffer.len();
+        if buflen == 0 {
+            break;
+        }
+        let mut peed = false;
+        children.iter().for_each(|child| {
+            if child
+                .stdin
+                .as_ref()
+                .map(|mut s| s.write_all(buffer))
+                .is_some()
+            {
+                peed = true;
             }
+        });
+        stdin.consume(buflen);
+        if !peed {
+            break;
         }
     }
 
