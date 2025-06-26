@@ -13,6 +13,7 @@ fn main() -> io::Result<()> {
         .expect("command name should be UTF-8 compliant");
     match cmd {
         "ifne" => moreutils::ifne(),
+        "pee" => moreutils::pee(),
         "sponge" => moreutils::sponge(),
         "ts" => moreutils::ts(),
         "vipe" => moreutils::vipe(),
