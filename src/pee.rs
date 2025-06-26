@@ -2,7 +2,7 @@ use std::{
     env,
     ffi::OsString,
     io::{self, BufRead, Write},
-    process::{self, Command, Stdio},
+    process::{self, Child, Command, Stdio},
     thread,
 };
 
@@ -66,22 +66,40 @@ pub fn pee() -> io::Result<()> {
             break;
         }
         let mut peed = false;
-        children.iter().for_each(|child| {
-            if child
+        for child in &mut children {
+            let write_result = child
                 .stdin
                 .as_ref()
                 .map(|mut s| s.write_all(buffer))
-                .is_some()
-            {
+                .expect("child handle");
+            if write_result.is_err() && !ignore_write_errors {
+                exit_children(&mut children, true)?;
+                process::exit(1);
+            }
+            if write_result.is_ok() {
                 peed = true;
             }
-        });
+        }
         stdin.consume(buflen);
         if !peed {
             break;
         }
     }
 
-    usage();
+    exit_children(&mut children, false)?;
+
+    Ok(())
+}
+
+fn exit_children(children: &mut Vec<Child>, kill: bool) -> io::Result<()> {
+    if kill {
+        for child in children {
+            let _ = child.kill();
+        }
+    } else {
+        for child in children {
+            let _ = child.wait();
+        }
+    }
     Ok(())
 }
