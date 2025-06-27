@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io;
 use std::io::Read;
@@ -11,7 +12,7 @@ fn usage() {
 }
 
 pub fn sponge() -> io::Result<()> {
-    let args: Vec<String> = env::args().skip(1).collect();
+    let args: Vec<OsString> = env::args_os().skip(1).collect();
     let (append, file) = match args.len() {
         2 => (args[0].eq("-a"), Path::new(&args[1])),
         1 => (false, Path::new(&args[0])),
