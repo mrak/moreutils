@@ -207,9 +207,9 @@ fn operate_tmpfile(
 }
 
 fn temporary_filename(source: &Path) -> PathBuf {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     loop {
-        let suffix = rng.gen_range(0..100000);
+        let suffix = rng.random_range(0..100000);
         let tmpname = source.with_extension(format!("{suffix:05}~"));
         if let Ok(false) = tmpname.try_exists() {
             return tmpname;
