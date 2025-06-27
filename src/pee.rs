@@ -8,10 +8,6 @@ use std::{
 
 use signal_hook::{consts::SIGPIPE, iterator::Signals};
 
-fn usage() {
-    eprintln!("Usage: pee [--[no-]ignore-sigpipe] [--[no-]ignore-write-errors] [[\"command\"...]]");
-}
-
 pub fn pee() -> io::Result<()> {
     let mut double_dash = false;
     let mut ignore_sigpipe = true;
@@ -92,12 +88,10 @@ pub fn pee() -> io::Result<()> {
 }
 
 fn exit_children(children: &mut Vec<Child>, kill: bool) -> io::Result<()> {
-    if kill {
-        for child in children {
+    for child in children {
+        if kill {
             let _ = child.kill();
-        }
-    } else {
-        for child in children {
+        } else {
             let _ = child.wait();
         }
     }
