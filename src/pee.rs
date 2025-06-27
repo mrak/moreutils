@@ -6,6 +6,7 @@ use std::{
     thread,
 };
 
+#[cfg(unix)]
 use signal_hook::{consts::SIGPIPE, iterator::Signals};
 
 pub fn pee() -> io::Result<()> {
@@ -16,42 +17,45 @@ pub fn pee() -> io::Result<()> {
     let args = env::args_os().skip(1);
 
     for arg in args {
-        if arg == "--" {
-            double_dash = true;
-        } else if !double_dash && arg == "--ignore-sigpipe" {
-            ignore_sigpipe = true;
-        } else if !double_dash && arg == "--no-ignore-sigpipe" {
-            ignore_sigpipe = false;
-        } else if !double_dash && arg == "--ignore-write-errors" {
-            ignore_write_errors = true;
-        } else if !double_dash && arg == "--no-ignore-write-errors" {
-            ignore_write_errors = false;
-        } else {
+        if double_dash {
             commands.push(arg);
+            continue;
+        }
+        match arg.to_str() {
+            Some("--") => double_dash = true,
+            Some("--ignore-sigpipe") => ignore_sigpipe = true,
+            Some("--no-ignore-sigpipe") => ignore_sigpipe = false,
+            Some("--ignore-write-errors") => ignore_write_errors = true,
+            Some("--no-ignore-write-errors") => ignore_write_errors = false,
+            _ => commands.push(arg),
         }
     }
 
+    #[cfg(unix)]
     if !ignore_sigpipe {
         let mut signals = Signals::new([SIGPIPE])?;
-        thread::spawn(move || {
-            if let Some(sig) = signals.forever().next() {
-                process::exit(128 + sig);
-            }
-        });
+        thread::Builder::new()
+            .name(String::from("SIGPIPE-handler"))
+            .spawn(move || {
+                if let Some(sig) = signals.forever().next() {
+                    process::exit(128 + sig);
+                }
+            })?;
     }
 
-    let mut children = Vec::new();
-    for command in commands {
-        let child = Command::new("/bin/sh")
-            .arg("-c")
-            .arg(&command)
-            .stdin(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .spawn()
-            .unwrap_or_else(|_| panic!("failed to spawn \"{:?}\"", command));
-        children.push(child);
-    }
+    let mut children: Vec<Child> = commands
+        .into_iter()
+        .map(|command| {
+            Command::new("/bin/sh")
+                .arg("-c")
+                .arg(&command)
+                .stdin(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .spawn()
+                .unwrap_or_else(|_| panic!("failed to spawn \"{:?}\"", command))
+        })
+        .collect();
 
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
@@ -63,17 +67,14 @@ pub fn pee() -> io::Result<()> {
         }
         let mut peed = false;
         for child in &mut children {
-            let write_result = child
-                .stdin
-                .as_ref()
-                .map(|mut s| s.write_all(buffer))
-                .expect("child handle");
-            if write_result.is_err() && !ignore_write_errors {
-                exit_children(&mut children, true)?;
-                process::exit(1);
-            }
-            if write_result.is_ok() {
-                peed = true;
+            if let Some(write_result) = child.stdin.as_ref().map(|mut s| s.write_all(buffer)) {
+                if write_result.is_err() && !ignore_write_errors {
+                    exit_children(&mut children, true)?;
+                    process::exit(1);
+                }
+                if write_result.is_ok() {
+                    peed = true;
+                }
             }
         }
         stdin.consume(buflen);
@@ -88,12 +89,13 @@ pub fn pee() -> io::Result<()> {
 }
 
 fn exit_children(children: &mut Vec<Child>, kill: bool) -> io::Result<()> {
-    for child in children {
-        if kill {
+    if kill {
+        for child in &mut *children {
             let _ = child.kill();
-        } else {
-            let _ = child.wait();
         }
+    }
+    for child in children {
+        let _ = child.wait();
     }
     Ok(())
 }
