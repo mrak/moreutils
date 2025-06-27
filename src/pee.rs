@@ -14,9 +14,8 @@ pub fn pee() -> io::Result<()> {
     let mut ignore_sigpipe = true;
     let mut ignore_write_errors = true;
     let mut commands: Vec<OsString> = Vec::new();
-    let args = env::args_os().skip(1);
 
-    for arg in args {
+    for arg in env::args_os().skip(1) {
         if double_dash {
             commands.push(arg);
             continue;

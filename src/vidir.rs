@@ -1,6 +1,6 @@
 use rand::Rng;
 use std::collections::HashSet;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Error, Write};
 use std::os::unix::ffi::OsStrExt;
@@ -53,21 +53,33 @@ fn entries_from_args() -> io::Result<(Vec<PathBuf>, bool)> {
     let mut files: Vec<PathBuf> = Vec::new();
     let mut verbose = false;
     let mut double_dash = false;
-    let mut source_given = false;
+    let mut sources: Vec<OsString> = Vec::new();
 
-    let args = env::args().skip(1);
-    for arg in args {
-        match arg.as_ref() {
-            "--" => double_dash = true,
-            "--verbose" if !double_dash => {
+    for arg in env::args_os().skip(1) {
+        if double_dash {
+            sources.push(arg);
+            continue;
+        }
+        match arg.to_str() {
+            Some("--") => double_dash = true,
+            Some("--verbose") => {
                 verbose = true;
             }
-            "--help" | "-h" if !double_dash => {
+            Some("--help" | "-h") => {
                 usage();
                 process::exit(0)
             }
-            "-" => {
-                source_given = true;
+            _ => sources.push(arg),
+        }
+    }
+
+    if sources.is_empty() {
+        sources.push(OsString::from("."));
+    }
+
+    for source in sources {
+        match source.to_str() {
+            Some("-") => {
                 let stdin = io::stdin();
                 let mut buffer = Vec::new();
                 let mut reader = BufReader::new(stdin.lock());
@@ -93,9 +105,8 @@ fn entries_from_args() -> io::Result<(Vec<PathBuf>, bool)> {
                     }
                 }
             }
-            x => {
-                source_given = true;
-                let p = PathBuf::from(x);
+            _ => {
+                let p = PathBuf::from(&source);
                 if p.is_file() || p.is_symlink() {
                     if unique_files.insert(p.clone()) {
                         files.push(p);
@@ -113,24 +124,12 @@ fn entries_from_args() -> io::Result<(Vec<PathBuf>, bool)> {
                         .collect();
                     files.extend(entries);
                 } else {
-                    return Err(Error::other(format!("Cannot read file or directory: {x}")));
+                    return Err(Error::other(format!(
+                        "Cannot read file or directory: {source:?}"
+                    )));
                 }
             }
         }
-    }
-
-    if !source_given {
-        let entries: Vec<PathBuf> = fs::read_dir(".")?
-            .flatten()
-            .filter(|e| {
-                e.metadata()
-                    .map(|m| m.is_file() || m.is_symlink())
-                    .unwrap_or(false)
-            })
-            .map(|e| e.path())
-            .filter(|p| unique_files.insert(p.clone()))
-            .collect();
-        files.extend(entries);
     }
 
     Ok((files, verbose))
