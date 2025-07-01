@@ -12,12 +12,13 @@ fn main() -> io::Result<()> {
         .and_then(OsStr::to_str)
         .expect("command name should be UTF-8 compliant");
     match cmd {
+        "errno" => moreutils::errno(),
         "ifne" => moreutils::ifne(),
         "pee" => moreutils::pee(),
         "sponge" => moreutils::sponge(),
         "ts" => moreutils::ts(),
         "vipe" => moreutils::vipe(),
         "vidir" => moreutils::vidir(),
-        x => panic!("not implemented: {}", x),
+        x => panic!("not implemented: {x}"),
     }
 }
