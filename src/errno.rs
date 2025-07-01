@@ -43,11 +43,7 @@ pub fn errno() -> io::Result<()> {
         }),
         Mode::Search(s) => ERRNOS
             .iter()
-            .filter(|&e| {
-                std::io::Error::from_raw_os_error(e.id)
-                    .to_string()
-                    .contains(&s)
-            })
+            .filter(|&e| description(e).to_lowercase().contains(&s.to_lowercase()))
             .for_each(|errno| {
                 print_errno(errno);
             }),
@@ -58,10 +54,14 @@ pub fn errno() -> io::Result<()> {
 }
 
 fn print_errno(errno: &Errno) {
+    println!("{} {} {}", errno.name, errno.id, description(errno));
+}
+
+fn description(errno: &Errno) -> String {
     let re = Regex::new(r" \(os error \d+\)").unwrap();
     let description = std::io::Error::from_raw_os_error(errno.id).to_string();
     let description = re.replace(&description, "");
-    println!("{} {} {}", errno.name, errno.id, description,);
+    description.to_string()
 }
 
 enum Mode {
