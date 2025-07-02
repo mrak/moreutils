@@ -45,7 +45,7 @@ pub fn ts() -> io::Result<()> {
                         's' => time_mode = TimeMode::SinceStart,
                         'm' => monotonic = true,
                         c => {
-                            eprintln!("Unknown option: {}", c);
+                            eprintln!("Unknown option: {c}");
                             usage();
                             process::exit(1);
                         }
@@ -232,7 +232,7 @@ fn time_is_relative(
                 caps.get(0).map_or("", |m| m.as_str()).to_string()
             }
         });
-        writeln!(stdout, "{}", modified)?;
+        writeln!(stdout, "{modified}")?;
     }
     Ok(())
 }
@@ -283,7 +283,6 @@ mod tests {
     #[test]
     fn lastlog() {
         let year = 2025;
-        let month = 4;
         let day = 1;
         let hour = 21;
         let minute = 2;
@@ -308,7 +307,6 @@ mod tests {
     #[test]
     fn rfc2822() {
         let year = 2025;
-        let month = 4;
         let day = 14;
         let hour = 21;
         let minute = 2;

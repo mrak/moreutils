@@ -27,8 +27,7 @@ pub fn edit_tmpfile(tmpfile: &Path) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::other(format!(
-            "{} exited nonzero, aborting",
-            editor
+            "{editor} exited nonzero, aborting",
         )))
     }
 }

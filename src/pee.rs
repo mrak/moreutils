@@ -52,7 +52,7 @@ pub fn pee() -> io::Result<()> {
                 .stderr(Stdio::inherit())
                 .stdout(Stdio::inherit())
                 .spawn()
-                .unwrap_or_else(|_| panic!("failed to spawn \"{:?}\"", command))
+                .unwrap_or_else(|_| panic!("failed to spawn \"{command:?}\""))
         })
         .collect();
 

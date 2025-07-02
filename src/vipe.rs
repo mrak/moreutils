@@ -27,7 +27,7 @@ pub fn vipe() -> io::Result<()> {
 
     let mut tmpfilename = format!("vipe_{}", std::process::id());
     if let Some(s) = suffix {
-        tmpfilename.push_str(format!(".{}", s).as_ref());
+        tmpfilename.push_str(format!(".{s}").as_ref());
     }
     let tmpfile = env::temp_dir().join(tmpfilename);
 
@@ -39,7 +39,7 @@ pub fn vipe() -> io::Result<()> {
 
     match result {
         Err(e) if e.kind() == io::ErrorKind::Other => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             exit(1)
         }
         _ => result,

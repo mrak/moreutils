@@ -26,7 +26,7 @@ pub fn vidir() -> io::Result<()> {
 
     match result {
         Err(e) if e.kind() == io::ErrorKind::Other => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             process::exit(1)
         }
         _ => result,
@@ -41,7 +41,7 @@ fn write_tmpfile(files: &[PathBuf], tmpfile: &PathBuf) -> io::Result<()> {
         .write(true)
         .open(tmpfile)?;
     for (i, pb) in files.iter().enumerate() {
-        write!(file, "{i:0$} ", format_width)?;
+        write!(file, "{i:format_width$} ")?;
         file.write_all(pb.as_os_str().as_bytes())?;
         writeln!(file)?;
     }
