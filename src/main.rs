@@ -27,6 +27,7 @@ fn main() -> io::Result<()> {
         .and_then(Path::file_name)
         .expect("always at least the program name");
     match cmd.to_str() {
+        Some("combine" | "_") => moreutils::combine(),
         Some("errno") => moreutils::errno(),
         Some("ifne") => moreutils::ifne(),
         Some("pee") => moreutils::pee(),
