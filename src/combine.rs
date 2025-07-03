@@ -78,6 +78,7 @@ fn op_and(stdout: &mut StdoutLock, file1: &Path, file2: &Path) -> io::Result<()>
     }
     Ok(())
 }
+
 fn op_not(stdout: &mut StdoutLock, file1: &Path, file2: &Path) -> io::Result<()> {
     let mut hs = HashSet::new();
     let mut buffer: Vec<u8> = Vec::new();
@@ -104,6 +105,7 @@ fn op_not(stdout: &mut StdoutLock, file1: &Path, file2: &Path) -> io::Result<()>
     }
     Ok(())
 }
+
 fn op_or(stdout: &mut StdoutLock, file1: &Path, file2: &Path) -> io::Result<()> {
     let mut f1 = File::open(file1)?;
     io::copy(&mut f1, stdout)?;
@@ -111,16 +113,29 @@ fn op_or(stdout: &mut StdoutLock, file1: &Path, file2: &Path) -> io::Result<()> 
     io::copy(&mut f2, stdout)?;
     Ok(())
 }
+
 fn op_xor(stdout: &mut StdoutLock, file1: &Path, file2: &Path) -> io::Result<()> {
     let mut hs = HashSet::new();
     let mut buffer: Vec<u8> = Vec::new();
 
+    let mut file2_reader = BufReader::new(File::open(file2)?);
+    while let Ok(n) = file2_reader.read_until(b'\n', &mut buffer) {
+        if n == 0 {
+            break;
+        }
+        hs.insert(buffer.clone());
+        buffer.clear();
+    }
+
+    buffer.clear();
     let mut file1_reader = BufReader::new(File::open(file1)?);
     while let Ok(n) = file1_reader.read_until(b'\n', &mut buffer) {
         if n == 0 {
             break;
         }
-        hs.insert(buffer.clone());
+        if !hs.remove(&buffer) {
+            stdout.write_all(&buffer)?;
+        }
         buffer.clear();
     }
 
@@ -130,8 +145,11 @@ fn op_xor(stdout: &mut StdoutLock, file1: &Path, file2: &Path) -> io::Result<()>
         if n == 0 {
             break;
         }
-        hs.insert(buffer.clone());
+        if hs.contains(&buffer) {
+            stdout.write_all(&buffer)?;
+        }
         buffer.clear();
     }
+
     Ok(())
 }
