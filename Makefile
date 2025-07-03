@@ -1,5 +1,5 @@
 .PHONY: install symlinks uninstall src/errno/errno_generated.rs
-IMPLEMENTED := sponge vipe ts vidir ifne pee errno
+IMPLEMENTED := sponge vipe ts vidir ifne pee errno combine
 SYMLINKS := $(addprefix ${HOME}/.local/bin/, $(IMPLEMENTED))
 
 install: symlinks src/errno/errno_generated.rs
