@@ -13,6 +13,11 @@ symlinks: $(SYMLINKS)
 $(SYMLINKS):
 	ln -sf moreutils $@
 
+# Not sure of a better way than letting
+# the system C preprocessor hunt down all the
+# linked header files via an <errno.h> include
+# and generating a rust array of the results.
+# Some errnos are likely missing.
 src/errno/errno_generated.rs:
 	echo > errno.c "#include <errno.h>"
 	echo >  $@ "use std::borrow::Cow;"
