@@ -1,3 +1,4 @@
+pub mod chronic;
 pub mod combine;
 pub mod common;
 pub mod errno;
@@ -8,6 +9,7 @@ pub mod ts;
 pub mod vidir;
 pub mod vipe;
 
+pub use chronic::chronic;
 pub use combine::combine;
 pub use errno::errno;
 pub use ifne::ifne;

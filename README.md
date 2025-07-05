@@ -4,7 +4,7 @@ My reimplementation of some of the fantastic utilities from `moreutils`
 
 ## Implemented
 
-- [ ] `chronic`
+- [x] `chronic`
 - [x] `combine`
 - [x] `errno`
 - [x] `ifne`

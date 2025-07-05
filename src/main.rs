@@ -8,6 +8,8 @@ fn usage() {
 moreutils is a multi-program binary that changes its operation based on the name it is
 invoked with. The following programs are included:
 
+  chronic
+  combine
   errno
   ifne
   pee
@@ -27,6 +29,7 @@ fn main() -> io::Result<()> {
         .and_then(Path::file_name)
         .expect("always at least the program name");
     match cmd.to_str() {
+        Some("chronic") => moreutils::chronic(),
         Some("combine" | "_") => moreutils::combine(),
         Some("errno") => moreutils::errno(),
         Some("ifne") => moreutils::ifne(),
