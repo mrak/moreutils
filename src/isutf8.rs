@@ -7,6 +7,9 @@ use std::{
     process,
 };
 
+use anyhow::Result;
+use anyhow::anyhow;
+
 #[derive(Default, Debug)]
 struct Options {
     invert: bool,
@@ -28,7 +31,7 @@ enum Utf8 {
 
 fn usage() {}
 
-pub fn isutf8() -> io::Result<()> {
+pub fn isutf8() -> Result<()> {
     let mut options = Options::default();
     let mut double_dash = false;
 
@@ -91,35 +94,38 @@ pub fn isutf8() -> io::Result<()> {
     Ok(())
 }
 
-fn validate_file(file: &OsString) -> io::Result<()> {
-    let mut mode = Utf8::Base;
-    let bytes = BufReader::new(File::open(file)?).bytes();
-    for (count, byte) in bytes.enumerate() {
-        let byte = byte?;
-        mode = match (&mode, byte) {
-            (Utf8::Base, b'\x00'..=b'\x7F') => Utf8::Base,
-            (Utf8::Base, b'\xC2'..=b'\xDF') => Utf8::Two,
-            (Utf8::Base, b'\xE0'..=b'\xEF') => Utf8::Three(byte),
-            (Utf8::Base, b'\xF0'..=b'\xF4') => Utf8::Four(byte),
+fn validate_file(file: &OsString) -> Result<()> {
+    BufReader::new(File::open(file)?)
+        .bytes()
+        .enumerate()
+        .try_fold(Utf8::Base, |mode, (count, byte)| {
+            let byte = byte?;
+            // https://www.unicode.org/versions/Unicode16.0.0/core-spec/chapter-3/#G27506
+            // Unicode 16.0.0 Core Spec, Chapter 3,
+            // § 3.9.3, Table 3-7. Well-Formed UTF-8 Byte Sequences
+            Ok(match (&mode, byte) {
+                (Utf8::Base, b'\x00'..=b'\x7F') => Utf8::Base,
+                (Utf8::Base, b'\xC2'..=b'\xDF') => Utf8::Two,
+                (Utf8::Base, b'\xE0'..=b'\xEF') => Utf8::Three(byte),
+                (Utf8::Base, b'\xF0'..=b'\xF4') => Utf8::Four(byte),
 
-            (Utf8::Two, b'\x80'..=b'\xBF') => Utf8::Base,
+                (Utf8::Two, b'\x80'..=b'\xBF') => Utf8::Base,
 
-            (Utf8::Three(b'\xE0'), b'\xA0'..=b'\xBF') => Utf8::ThreeFinal,
-            (Utf8::Three(b'\xE1'..=b'\xEC'), b'\x80'..b'\xBF') => Utf8::ThreeFinal,
-            (Utf8::Three(b'\xED'), b'\x80'..=b'\x9F') => Utf8::ThreeFinal,
-            (Utf8::Three(b'\xEE'..=b'\xEF'), b'\x80'..=b'\x9F') => Utf8::ThreeFinal,
-            (Utf8::ThreeFinal, b'\x80'..=b'\xBF') => Utf8::Base,
+                (Utf8::Three(b'\xE0'), b'\xA0'..=b'\xBF') => Utf8::ThreeFinal,
+                (Utf8::Three(b'\xE1'..=b'\xEC'), b'\x80'..b'\xBF') => Utf8::ThreeFinal,
+                (Utf8::Three(b'\xED'), b'\x80'..=b'\x9F') => Utf8::ThreeFinal,
+                (Utf8::Three(b'\xEE'..=b'\xEF'), b'\x80'..=b'\x9F') => Utf8::ThreeFinal,
+                (Utf8::ThreeFinal, b'\x80'..=b'\xBF') => Utf8::Base,
 
-            (Utf8::Four(b'\xF0'), b'\x90'..b'\xBF') => Utf8::FourThird,
-            (Utf8::Four(b'\xF1'..=b'\xF3'), b'\x80'..b'\xBF') => Utf8::FourThird,
-            (Utf8::Four(b'\xF4'), b'\x80'..b'\x8F') => Utf8::FourThird,
-            (Utf8::FourThird, b'\x80'..=b'\xBF') => Utf8::FourFinal,
-            (Utf8::FourFinal, b'\x80'..=b'\xBF') => Utf8::Base,
-            _ => {
-                eprintln!("{file:?} is invalid UTF-8 at byte {count}");
-                break;
-            }
-        }
-    }
-    Ok(())
+                (Utf8::Four(b'\xF0'), b'\x90'..b'\xBF') => Utf8::FourThird,
+                (Utf8::Four(b'\xF1'..=b'\xF3'), b'\x80'..b'\xBF') => Utf8::FourThird,
+                (Utf8::Four(b'\xF4'), b'\x80'..b'\x8F') => Utf8::FourThird,
+                (Utf8::FourThird, b'\x80'..=b'\xBF') => Utf8::FourFinal,
+                (Utf8::FourFinal, b'\x80'..=b'\xBF') => Utf8::Base,
+                _ => {
+                    return Err(anyhow!("{file:?}: invalid byte at position {count}"));
+                }
+            })
+        })
+        .map(|_| ())
 }
