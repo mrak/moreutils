@@ -10,11 +10,18 @@ use std::{
 use thiserror::Error;
 
 #[derive(Default, Debug)]
+enum DisplayMode {
+    #[default]
+    Normal,
+    Quiet,
+    List,
+    Invert,
+    Verbose,
+}
+
+#[derive(Default, Debug)]
 struct Options {
-    invert: bool,
-    list: bool,
-    quiet: bool,
-    verbose: bool,
+    display_mode: DisplayMode,
     files: Vec<OsString>,
 }
 
@@ -53,10 +60,10 @@ pub fn isutf8() -> io::Result<()> {
                 usage();
                 process::exit(0);
             }
-            Some("--invert") => options.invert = true,
-            Some("--list") => options.list = true,
-            Some("--quiet") => options.quiet = true,
-            Some("--verbose") => options.verbose = true,
+            Some("--invert") => options.display_mode = DisplayMode::Invert,
+            Some("--list") => options.display_mode = DisplayMode::List,
+            Some("--quiet") => options.display_mode = DisplayMode::Quiet,
+            Some("--verbose") => options.display_mode = DisplayMode::Verbose,
             Some("-") => options.files.push(arg),
             Some(x) if x.starts_with("-") => {
                 for flag in x.chars().skip(1) {
@@ -65,10 +72,10 @@ pub fn isutf8() -> io::Result<()> {
                             usage();
                             process::exit(0);
                         }
-                        'i' => options.invert = true,
-                        'l' => options.list = true,
-                        'q' => options.quiet = true,
-                        'v' => options.verbose = true,
+                        'i' => options.display_mode = DisplayMode::Invert,
+                        'l' => options.display_mode = DisplayMode::List,
+                        'q' => options.display_mode = DisplayMode::Quiet,
+                        'v' => options.display_mode = DisplayMode::Verbose,
                         _ => {
                             eprintln!("isutf8: invalid option -- {flag}");
                             usage();
@@ -94,22 +101,40 @@ pub fn isutf8() -> io::Result<()> {
         }
     }
 
+    let mut exit_code = 0;
+
     for file in options.files {
         match validate_file(&file) {
-            Ok(_) => {}
+            Ok(_) => {
+                if let DisplayMode::Invert = options.display_mode {
+                    println!("{}", file.display())
+                }
+            }
             Err(ValidationError::Io(e)) => {
                 return Err(e);
             }
             Err(ValidationError::Utf8(lines, chars, bytes, message)) => {
-                println!(
-                    "{}: line {lines}, char {chars}, byte {bytes}: {message}",
-                    file.display()
-                );
+                exit_code = 1;
+                match options.display_mode {
+                    DisplayMode::Normal => println!(
+                        "{}: line {lines}, char {chars}, byte {bytes}: {message}",
+                        file.display()
+                    ),
+                    DisplayMode::List => println!("{}", file.display()),
+                    DisplayMode::Verbose => {
+                        println!(
+                            "{}: line {lines}, char {chars}, byte {bytes}: {message}",
+                            file.display()
+                        );
+                        println!("TODO: verbose hex output");
+                    }
+                    _ => {}
+                }
             }
         };
     }
 
-    Ok(())
+    process::exit(exit_code);
 }
 
 fn validate_file(file: &OsString) -> Result<(), ValidationError> {
