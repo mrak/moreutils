@@ -33,6 +33,7 @@ fn main() -> io::Result<()> {
         Some("combine" | "_") => moreutils::combine(),
         Some("errno") => moreutils::errno(),
         Some("ifne") => moreutils::ifne(),
+        Some("isutf8") => moreutils::isutf8(),
         Some("pee") => moreutils::pee(),
         Some("sponge") => moreutils::sponge(),
         Some("ts") => moreutils::ts(),
