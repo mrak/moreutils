@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::{
     env,
     ffi::OsString,
@@ -6,9 +7,7 @@ use std::{
     os::unix::ffi::OsStringExt,
     process,
 };
-
-use anyhow::Result;
-use anyhow::anyhow;
+use thiserror::Error;
 
 #[derive(Default, Debug)]
 struct Options {
@@ -17,6 +16,14 @@ struct Options {
     quiet: bool,
     verbose: bool,
     files: Vec<OsString>,
+}
+
+#[derive(Error, Debug)]
+enum ValidationError {
+    #[error("{1}")]
+    Utf8(usize, String),
+    #[error("{0}")]
+    Io(#[from] io::Error),
 }
 
 enum Utf8 {
@@ -31,7 +38,7 @@ enum Utf8 {
 
 fn usage() {}
 
-pub fn isutf8() -> Result<()> {
+pub fn isutf8() -> io::Result<()> {
     let mut options = Options::default();
     let mut double_dash = false;
 
@@ -88,14 +95,32 @@ pub fn isutf8() -> Result<()> {
     }
 
     for file in options.files {
-        validate_file(&file)?;
+        match validate_file(&file) {
+            Ok(_) => {}
+            Err(ValidationError::Io(e)) => {
+                return Err(e);
+            }
+            Err(ValidationError::Utf8(position, message)) => {
+                println!(
+                    "{}: line X, char X, byte {position}: {message}",
+                    file.display()
+                );
+            }
+        };
     }
 
     Ok(())
 }
 
-fn validate_file(file: &OsString) -> Result<()> {
-    BufReader::new(File::open(file)?)
+fn validate_file(file: &OsString) -> Result<(), ValidationError> {
+    let fd = match File::open(file) {
+        Ok(f) => f,
+        Err(e) => {
+            return Err(ValidationError::Io(e));
+        }
+    };
+    let file_length = fd.metadata()?.len();
+    let result = BufReader::new(fd)
         .bytes()
         .enumerate()
         .try_fold(Utf8::Base, |mode, (count, byte)| {
@@ -108,24 +133,134 @@ fn validate_file(file: &OsString) -> Result<()> {
                 (Utf8::Base, b'\xC2'..=b'\xDF') => Utf8::Two,
                 (Utf8::Base, b'\xE0'..=b'\xEF') => Utf8::Three(byte),
                 (Utf8::Base, b'\xF0'..=b'\xF4') => Utf8::Four(byte),
+                (Utf8::Base, _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "Expecting bytes in the following ranges: 00..7F C2..F4."
+                        ),
+                    ));
+                }
 
                 (Utf8::Two, b'\x80'..=b'\xBF') => Utf8::Base,
+                (Utf8::Two, _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte between C2 and DF, expecting a 2nd byte between 80 and BF"
+                        ),
+                    ));
+                }
 
                 (Utf8::Three(b'\xE0'), b'\xA0'..=b'\xBF') => Utf8::ThreeFinal,
+                (Utf8::Three(b'\xE0'), _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte of E0, expecting a 2nd byte between A0 and BF."
+                        ),
+                    ));
+                }
                 (Utf8::Three(b'\xE1'..=b'\xEC'), b'\x80'..b'\xBF') => Utf8::ThreeFinal,
+                (Utf8::Three(b'\xE1'..=b'\xEC'), _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte between E1 and EC, expecting a 2nd byte between 80 and BF."
+                        ),
+                    ));
+                }
                 (Utf8::Three(b'\xED'), b'\x80'..=b'\x9F') => Utf8::ThreeFinal,
+                (Utf8::Three(b'\xED'), _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte of ED, expecting a 2nd byte between 80 and 9F."
+                        ),
+                    ));
+                }
                 (Utf8::Three(b'\xEE'..=b'\xEF'), b'\x80'..=b'\x9F') => Utf8::ThreeFinal,
+                (Utf8::Three(b'\xEE'..=b'\xEF'), _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte between EE and EF, expecting a 2nd byte between 80 and BF."
+                        ),
+                    ));
+                }
                 (Utf8::ThreeFinal, b'\x80'..=b'\xBF') => Utf8::Base,
+                (Utf8::ThreeFinal, _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte between E0 and EF, expecting a 3nd byte between 80 and BF."
+                        ),
+                    ));
+                }
 
                 (Utf8::Four(b'\xF0'), b'\x90'..b'\xBF') => Utf8::FourThird,
-                (Utf8::Four(b'\xF1'..=b'\xF3'), b'\x80'..b'\xBF') => Utf8::FourThird,
-                (Utf8::Four(b'\xF4'), b'\x80'..b'\x8F') => Utf8::FourThird,
-                (Utf8::FourThird, b'\x80'..=b'\xBF') => Utf8::FourFinal,
-                (Utf8::FourFinal, b'\x80'..=b'\xBF') => Utf8::Base,
-                _ => {
-                    return Err(anyhow!("{file:?}: invalid byte at position {count}"));
+                (Utf8::Four(b'\xF0'), _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte of F0, expecting a 2nd byte between 90 and BF."
+                        ),
+                    ));
                 }
+                (Utf8::Four(b'\xF1'..=b'\xF3'), b'\x80'..b'\xBF') => Utf8::FourThird,
+                (Utf8::Four(b'\xF1'..=b'\xF3'), _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte between F1 and F3, expecting a 2nd byte between 80 and BF."
+                        ),
+                    ));
+                }
+                (Utf8::Four(b'\xF4'), b'\x80'..b'\x8F') => Utf8::FourThird,
+                (Utf8::Four(b'\xF4'), _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte of F4, expecting a 2nd byte between 80 and BF."
+                        ),
+                    ));
+                }
+                (Utf8::FourThird, b'\x80'..=b'\xBF') => Utf8::FourFinal,
+                (Utf8::FourThird, _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte between F0 and F4, expecting a 3nd byte between 80 and BF."
+                        ),
+                    ));
+                }
+                (Utf8::FourFinal, b'\x80'..=b'\xBF') => Utf8::Base,
+                (Utf8::FourFinal, _) => {
+                    return Err(ValidationError::Utf8(
+                        count,
+                        String::from(
+                            "After a first byte between F0 and F4, expecting a 4th byte between 80 and BF."
+                        ),
+                    ));
+                }
+                _ => unreachable!(),
             })
-        })
-        .map(|_| ())
+        });
+
+    match result {
+        Ok(Utf8::Base) => Ok(()),
+        Ok(Utf8::Two) => Err(ValidationError::Utf8(
+            file_length as usize,
+            String::from("After a first byte between C2 and DF, expecting a 2nd byte."),
+        )),
+        Ok(Utf8::Three(_) | Utf8::ThreeFinal) => Err(ValidationError::Utf8(
+            file_length as usize,
+            String::from("After a first byte between E0 and EF, two following bytes."),
+        )),
+        Ok(Utf8::Four(_) | Utf8::FourThird | Utf8::FourFinal) => Err(ValidationError::Utf8(
+            file_length as usize,
+            String::from("After a first byte between F0 and F4, three following bytes."),
+        )),
+        Err(e) => Err(e),
+    }
 }
