@@ -43,7 +43,16 @@ enum Utf8 {
     FourFinal,
 }
 
-fn usage() {}
+fn usage() {
+    println!("Usage: isutf8 [OPTION]... [FILE]...");
+    println!("Check whether input files are valid UTF-8.");
+    println!();
+    println!("  -h, --help       display this help text and exit");
+    println!("  -q, --quiet      suppress all normal output");
+    println!("  -l, --list       print only names of FILEs containing invalid UTF-8");
+    println!("  -i, --invert     list valid UTF-8 files instead of invalid ones");
+    println!("  -v, --verbose    print detailed error (multiple lines)");
+}
 
 pub fn isutf8() -> io::Result<()> {
     let mut options = Options::default();
