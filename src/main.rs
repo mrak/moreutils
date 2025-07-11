@@ -12,6 +12,8 @@ invoked with. The following programs are included:
   combine
   errno
   ifne
+  isutf8
+  mispipe
   pee
   sponge
   ts
@@ -34,6 +36,7 @@ fn main() -> io::Result<()> {
         Some("errno") => moreutils::errno(),
         Some("ifne") => moreutils::ifne(),
         Some("isutf8") => moreutils::isutf8(),
+        Some("mispipe") => moreutils::mispipe(),
         Some("pee") => moreutils::pee(),
         Some("sponge") => moreutils::sponge(),
         Some("ts") => moreutils::ts(),
