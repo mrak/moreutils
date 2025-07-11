@@ -13,6 +13,7 @@ black-box testing with inputs/outputs against the existing utilities.
 - [x] `chronic`
 - [x] `combine`
 - [x] `errno`
+- [ ] `ifdata`
 - [x] `ifne`
 - [x] `isutf8`
 - [x] `mispipe`
@@ -27,4 +28,3 @@ black-box testing with inputs/outputs against the existing utilities.
 ## Will not implement
 
 * `lckdo` - deprecated by `flock`
-* `ifdata` - seems to reimplement `ip` or `ifconfig` for script-friendly output
