@@ -1,6 +1,7 @@
 # moreutils
 
-My from-scratch reimplementation of some of the fantastic utilities from `moreutils`.
+My from-scratch reimplementation of some of the fantastic utilities from
+[moreutils](http://joeyh.name/code/moreutils/) released under an MIT license.
 
 Some features are vaguely described, such as the "many common timestamp formats
 are supported" for the `ts` program which are not described in the README, man
