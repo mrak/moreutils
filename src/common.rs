@@ -56,7 +56,7 @@ impl RingBuffer {
         self.head = (self.head + 1) % self.capacity;
     }
 
-    pub fn as_vec(&self) -> Vec<u8> {
+    pub fn to_vec(&self) -> Vec<u8> {
         let mut vec = Vec::<u8>::with_capacity(self.size);
         let start = (self.head - self.size + self.capacity) % self.capacity;
         let mut i = 0;
@@ -66,4 +66,23 @@ impl RingBuffer {
         }
         vec
     }
+
+    pub fn into_vec(mut self) -> Vec<u8> {
+        if self.size == self.head {
+            self.data[0..self.size].to_owned()
+        } else {
+            rotate_vector(&mut self.data, self.size - self.head);
+            self.data
+        }
+    }
+}
+
+fn rotate_vector<T>(vec: &mut [T], n: usize) {
+    let n = n % vec.len();
+    if n == 0 {
+        return;
+    }
+    vec.reverse();
+    vec[0..n].reverse();
+    vec[n..].reverse();
 }
