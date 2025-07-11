@@ -1,4 +1,3 @@
-use rand::Rng;
 use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
@@ -207,9 +206,9 @@ fn operate_tmpfile(
 }
 
 fn temporary_filename(source: &Path) -> PathBuf {
-    let mut rng = rand::rng();
+    let mut suffix = 0;
     loop {
-        let suffix = rng.random_range(0..100000);
+        suffix += 1;
         let tmpname = source.with_extension(format!("{suffix:05}~"));
         if let Ok(false) = tmpname.try_exists() {
             return tmpname;

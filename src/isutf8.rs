@@ -1,12 +1,12 @@
 use std::{
     env,
     ffi::OsString,
+    fmt::Display,
     fs::File,
     io::{self, BufRead, BufReader, Read},
     os::unix::ffi::OsStringExt,
     process,
 };
-use thiserror::Error;
 
 use crate::common::RingBuffer;
 
@@ -26,12 +26,22 @@ struct Options {
     files: Vec<OsString>,
 }
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 enum Utf8ParseError {
-    #[error("{6}")]
     Utf8(usize, usize, usize, Vec<u8>, Vec<u8>, Vec<u8>, String),
-    #[error("{0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
+}
+
+impl From<io::Error> for Utf8ParseError {
+    fn from(value: io::Error) -> Self {
+        Utf8ParseError::Io(value)
+    }
+}
+
+impl Display for Utf8ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
+    }
 }
 
 enum Utf8 {
