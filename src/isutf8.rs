@@ -52,16 +52,6 @@ impl Display for Utf8ParseError {
     }
 }
 
-enum Utf8 {
-    Base,
-    Two(u8),
-    Three(u8),
-    ThreeFinal(u8, u8),
-    Four(u8),
-    FourThird(u8, u8),
-    FourFinal(u8, u8, u8),
-}
-
 fn usage() {
     println!("Usage: isutf8 [OPTION]... [FILE]...");
     println!("Check whether input files are valid UTF-8.");
@@ -183,6 +173,32 @@ pub fn isutf8() -> io::Result<()> {
 }
 
 fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
+    // https://www.unicode.org/versions/Unicode16.0.0/core-spec/chapter-3/#G27506
+    // Unicode 16.0.0 Core Spec, Chapter 3,
+    // § 3.9.3, Table 3-7. Well-Formed UTF-8 Byte Sequences
+    // +---------------------+--------+--------+--------+--------+
+    // | Code Points / Bytes | First  | Second | Third  | Fourth |
+    // +---------------------+--------+--------+--------+--------+
+    // | U+0000..U+007F      | 00..7F |        |        |        |
+    // | U+0080..U+07FF      | C2..DF | 80..BF |        |        |
+    // | U+0800..U+0FFF      | E0     | A0..BF | 80..BF |        |
+    // | U+1000..U+CFFF      | E1..EC | 80..BF | 80..BF |        |
+    // | U+D000..U+D7FF      | ED     | 80..9F | 80..BF |        |
+    // | U+E000..U+FFFF      | EE..EF | 80..BF | 80..BF |        |
+    // | U+10000..U+3FFFF    | F0     | 90..BF | 80..BF | 80..BF |
+    // | U+40000..U+FFFFF    | F1..F3 | 80..BF | 80..BF | 80..BF |
+    // | U+100000..U+10FFFF  | F4     | 80..8F | 80..BF | 80..BF |
+    // +---------------------+--------+--------+--------+--------+
+    enum Utf8 {
+        Base,
+        Seq2Seen1(u8),
+        Seq3Seen1(u8),
+        Seq3Seen2(u8, u8),
+        Seq4Seen1(u8),
+        Seq4Seen2(u8, u8),
+        Seq4Seen3(u8, u8, u8),
+    }
+
     let fd = match File::open(file) {
         Ok(f) => f,
         Err(e) => {
@@ -196,9 +212,6 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
     let mut iterator = BufReader::new(fd).bytes().enumerate();
     let result = iterator.try_fold(Utf8::Base, |mode, (count, byte)| {
         let byte = byte?;
-        // https://www.unicode.org/versions/Unicode16.0.0/core-spec/chapter-3/#G27506
-        // Unicode 16.0.0 Core Spec, Chapter 3,
-        // § 3.9.3, Table 3-7. Well-Formed UTF-8 Byte Sequences
         let mode = match (&mode, byte) {
             (Utf8::Base, b'\x0a') => {
                 lines += 1;
@@ -208,15 +221,15 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
             (Utf8::Base, b'\x00'..=b'\x7F') => Ok(Utf8::Base),
             (Utf8::Base, b'\xC2'..=b'\xDF') => {
                 bytes = count;
-                Ok(Utf8::Two(byte))
+                Ok(Utf8::Seq2Seen1(byte))
             }
             (Utf8::Base, b'\xE0'..=b'\xEF') => {
                 bytes = count;
-                Ok(Utf8::Three(byte))
+                Ok(Utf8::Seq3Seen1(byte))
             }
             (Utf8::Base, b'\xF0'..=b'\xF4') => {
                 bytes = count;
-                Ok(Utf8::Four(byte))
+                Ok(Utf8::Seq4Seen1(byte))
             }
             (Utf8::Base, _) => Err(Utf8ParseError::Utf8(
                 lines,
@@ -228,11 +241,11 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                 String::from("Expecting bytes in the following ranges: 00..7F C2..F4."),
             )),
 
-            (Utf8::Two(b), b'\x80'..=b'\xBF') => {
+            (Utf8::Seq2Seen1(b), b'\x80'..=b'\xBF') => {
                 trailing_context.insert(*b);
                 Ok(Utf8::Base)
             }
-            (Utf8::Two(b), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq2Seen1(b), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -244,8 +257,8 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                 ),
             )),
 
-            (Utf8::Three(b @ b'\xE0'), b'\xA0'..=b'\xBF') => Ok(Utf8::ThreeFinal(*b, byte)),
-            (Utf8::Three(b @ b'\xE0'), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq3Seen1(b @ b'\xE0'), b'\xA0'..=b'\xBF') => Ok(Utf8::Seq3Seen2(*b, byte)),
+            (Utf8::Seq3Seen1(b @ b'\xE0'), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -254,10 +267,10 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                 vec![],
                 String::from("After a first byte of E0, expecting a 2nd byte between A0 and BF."),
             )),
-            (Utf8::Three(b @ b'\xE1'..=b'\xEC'), b'\x80'..b'\xBF') => {
-                Ok(Utf8::ThreeFinal(*b, byte))
+            (Utf8::Seq3Seen1(b @ b'\xE1'..=b'\xEC'), b'\x80'..b'\xBF') => {
+                Ok(Utf8::Seq3Seen2(*b, byte))
             }
-            (Utf8::Three(b @ b'\xE1'..=b'\xEC'), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq3Seen1(b @ b'\xE1'..=b'\xEC'), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -268,8 +281,8 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                     "After a first byte between E1 and EC, expecting a 2nd byte between 80 and BF.",
                 ),
             )),
-            (Utf8::Three(b @ b'\xED'), b'\x80'..=b'\x9F') => Ok(Utf8::ThreeFinal(*b, byte)),
-            (Utf8::Three(b @ b'\xED'), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq3Seen1(b @ b'\xED'), b'\x80'..=b'\x9F') => Ok(Utf8::Seq3Seen2(*b, byte)),
+            (Utf8::Seq3Seen1(b @ b'\xED'), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -278,10 +291,10 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                 vec![],
                 String::from("After a first byte of ED, expecting a 2nd byte between 80 and 9F."),
             )),
-            (Utf8::Three(b @ b'\xEE'..=b'\xEF'), b'\x80'..=b'\x9F') => {
-                Ok(Utf8::ThreeFinal(*b, byte))
+            (Utf8::Seq3Seen1(b @ b'\xEE'..=b'\xEF'), b'\x80'..=b'\x9F') => {
+                Ok(Utf8::Seq3Seen2(*b, byte))
             }
-            (Utf8::Three(b @ b'\xEE'..=b'\xEF'), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq3Seen1(b @ b'\xEE'..=b'\xEF'), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -292,12 +305,12 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                     "After a first byte between EE and EF, expecting a 2nd byte between 80 and BF.",
                 ),
             )),
-            (Utf8::ThreeFinal(a, b), b'\x80'..=b'\xBF') => {
+            (Utf8::Seq3Seen2(a, b), b'\x80'..=b'\xBF') => {
                 trailing_context.insert(*a);
                 trailing_context.insert(*b);
                 Ok(Utf8::Base)
             }
-            (Utf8::ThreeFinal(a, b), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq3Seen2(a, b), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -309,8 +322,8 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                 ),
             )),
 
-            (Utf8::Four(b @ b'\xF0'), b'\x90'..b'\xBF') => Ok(Utf8::FourThird(*b, byte)),
-            (Utf8::Four(b @ b'\xF0'), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq4Seen1(b @ b'\xF0'), b'\x90'..b'\xBF') => Ok(Utf8::Seq4Seen2(*b, byte)),
+            (Utf8::Seq4Seen1(b @ b'\xF0'), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -319,8 +332,10 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                 vec![],
                 String::from("After a first byte of F0, expecting a 2nd byte between 90 and BF."),
             )),
-            (Utf8::Four(b @ b'\xF1'..=b'\xF3'), b'\x80'..b'\xBF') => Ok(Utf8::FourThird(*b, byte)),
-            (Utf8::Four(b @ b'\xF1'..=b'\xF3'), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq4Seen1(b @ b'\xF1'..=b'\xF3'), b'\x80'..b'\xBF') => {
+                Ok(Utf8::Seq4Seen2(*b, byte))
+            }
+            (Utf8::Seq4Seen1(b @ b'\xF1'..=b'\xF3'), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -331,8 +346,8 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                     "After a first byte between F1 and F3, expecting a 2nd byte between 80 and BF.",
                 ),
             )),
-            (Utf8::Four(b @ b'\xF4'), b'\x80'..b'\x8F') => Ok(Utf8::FourThird(*b, byte)),
-            (Utf8::Four(b @ b'\xF4'), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq4Seen1(b @ b'\xF4'), b'\x80'..b'\x8F') => Ok(Utf8::Seq4Seen2(*b, byte)),
+            (Utf8::Seq4Seen1(b @ b'\xF4'), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -341,8 +356,8 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                 vec![],
                 String::from("After a first byte of F4, expecting a 2nd byte between 80 and BF."),
             )),
-            (Utf8::FourThird(a, b), b'\x80'..=b'\xBF') => Ok(Utf8::FourFinal(*a, *b, byte)),
-            (Utf8::FourThird(a, b), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq4Seen2(a, b), b'\x80'..=b'\xBF') => Ok(Utf8::Seq4Seen3(*a, *b, byte)),
+            (Utf8::Seq4Seen2(a, b), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -353,13 +368,13 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
                     "After a first byte between F0 and F4, expecting a 3nd byte between 80 and BF.",
                 ),
             )),
-            (Utf8::FourFinal(a, b, c), b'\x80'..=b'\xBF') => {
+            (Utf8::Seq4Seen3(a, b, c), b'\x80'..=b'\xBF') => {
                 trailing_context.insert(*a);
                 trailing_context.insert(*b);
                 trailing_context.insert(*c);
                 Ok(Utf8::Base)
             }
-            (Utf8::FourFinal(a, b, c), _) => Err(Utf8ParseError::Utf8(
+            (Utf8::Seq4Seen3(a, b, c), _) => Err(Utf8ParseError::Utf8(
                 lines,
                 chars,
                 bytes,
@@ -384,7 +399,7 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
 
     match result {
         Ok(Utf8::Base) => Ok(()),
-        Ok(Utf8::Two(b)) => Err(Utf8ParseError::Utf8(
+        Ok(Utf8::Seq2Seen1(b)) => Err(Utf8ParseError::Utf8(
             lines,
             chars,
             bytes,
@@ -393,7 +408,7 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
             vec![],
             String::from("After a first byte between C2 and DF, expecting a 2nd byte."),
         )),
-        Ok(Utf8::Three(b)) => Err(Utf8ParseError::Utf8(
+        Ok(Utf8::Seq3Seen1(b)) => Err(Utf8ParseError::Utf8(
             lines,
             chars,
             bytes,
@@ -402,7 +417,7 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
             vec![],
             String::from("After a first byte between E0 and EF, two following bytes."),
         )),
-        Ok(Utf8::ThreeFinal(a, b)) => Err(Utf8ParseError::Utf8(
+        Ok(Utf8::Seq3Seen2(a, b)) => Err(Utf8ParseError::Utf8(
             lines,
             chars,
             bytes,
@@ -411,7 +426,7 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
             vec![],
             String::from("After a first byte between E0 and EF, two following bytes."),
         )),
-        Ok(Utf8::Four(b)) => Err(Utf8ParseError::Utf8(
+        Ok(Utf8::Seq4Seen1(b)) => Err(Utf8ParseError::Utf8(
             lines,
             chars,
             bytes,
@@ -420,7 +435,7 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
             vec![],
             String::from("After a first byte between F0 and F4, three following bytes."),
         )),
-        Ok(Utf8::FourThird(a, b)) => Err(Utf8ParseError::Utf8(
+        Ok(Utf8::Seq4Seen2(a, b)) => Err(Utf8ParseError::Utf8(
             lines,
             chars,
             bytes,
@@ -429,7 +444,7 @@ fn validate_file(file: &OsString) -> Result<(), Utf8ParseError> {
             vec![],
             String::from("After a first byte between F0 and F4, three following bytes."),
         )),
-        Ok(Utf8::FourFinal(a, b, c)) => Err(Utf8ParseError::Utf8(
+        Ok(Utf8::Seq4Seen3(a, b, c)) => Err(Utf8ParseError::Utf8(
             lines,
             chars,
             bytes,
