@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::env;
 use std::fs::OpenOptions;
 use std::io;
@@ -29,5 +30,40 @@ pub fn edit_tmpfile(tmpfile: &Path) -> io::Result<()> {
         Err(io::Error::other(format!(
             "{editor} exited nonzero, aborting",
         )))
+    }
+}
+
+pub struct RingBuffer {
+    head: usize,
+    size: usize,
+    capacity: usize,
+    data: Vec<u8>,
+}
+
+impl RingBuffer {
+    pub fn new(size: usize) -> RingBuffer {
+        RingBuffer {
+            head: 0,
+            size: 0,
+            capacity: size,
+            data: vec![0; size],
+        }
+    }
+
+    pub fn insert(&mut self, byte: u8) {
+        self.size = min(self.capacity, self.size + 1);
+        self.data[self.head] = byte;
+        self.head = (self.head + 1) % self.capacity;
+    }
+
+    pub fn as_vec(&self) -> Vec<u8> {
+        let mut vec = Vec::<u8>::with_capacity(self.size);
+        let start = (self.head - self.size + self.capacity) % self.capacity;
+        let mut i = 0;
+        while i < self.size {
+            vec.push(self.data[(start + i) % self.capacity]);
+            i += 1;
+        }
+        vec
     }
 }
