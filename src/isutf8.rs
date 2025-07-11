@@ -136,12 +136,21 @@ pub fn isutf8() -> io::Result<()> {
                             "{}: line {lines}, char {chars}, byte {bytes}: {message}",
                             file.display()
                         );
-                        let trailing_hex = byte_vec_hex(&trailing);
-                        let context_hex = byte_vec_hex(&context);
-                        let forward_hex = byte_vec_hex(&forward);
-                        let trailing_ascii = byte_vec_ascii(&trailing);
-                        let context_ascii = byte_vec_ascii(&context);
-                        let forward_ascii = byte_vec_ascii(&forward);
+                        let mut trailing_hex = byte_vec_hex(&trailing);
+                        let mut context_hex = byte_vec_hex(&context);
+                        let mut forward_hex = byte_vec_hex(&forward);
+                        let mut trailing_ascii = byte_vec_ascii(&trailing);
+                        let mut context_ascii = byte_vec_ascii(&context);
+                        let mut forward_ascii = byte_vec_ascii(&forward);
+                        println!(
+                            "{trailing_hex} {context_hex} {forward_hex}  | {trailing_ascii}{context_ascii}{forward_ascii}"
+                        );
+                        trailing_hex = String::from(" ").repeat(trailing_hex.len());
+                        context_hex = String::from("^").repeat(context_hex.len());
+                        forward_hex = String::from(" ").repeat(forward_hex.len());
+                        trailing_ascii = String::from(" ").repeat(trailing_ascii.len());
+                        context_ascii = String::from("^").repeat(context_ascii.len());
+                        forward_ascii = String::from(" ").repeat(forward_ascii.len());
                         println!(
                             "{trailing_hex} {context_hex} {forward_hex}  | {trailing_ascii}{context_ascii}{forward_ascii}"
                         );
