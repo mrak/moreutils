@@ -28,7 +28,15 @@ struct Options {
 
 #[derive(Debug)]
 enum Utf8ParseError {
-    Utf8(usize, usize, usize, Vec<u8>, Vec<u8>, Vec<u8>, String),
+    Utf8(
+        usize,   // line number
+        usize,   // chars into line
+        usize,   // total bytes so far
+        Vec<u8>, // trailing context
+        Vec<u8>, // unfinished codepoint bytes
+        Vec<u8>, // forward context
+        String,  // error message
+    ),
     Io(io::Error),
 }
 
