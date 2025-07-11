@@ -14,7 +14,7 @@ black-box testing with inputs/outputs against the existing utilities.
 - [x] `combine`
 - [x] `errno`
 - [x] `ifne`
-- [ ] `isutf8`
+- [x] `isutf8`
 - [ ] `mispipe`
 - [ ] `parallel`
 - [x] `pee`
