@@ -19,6 +19,7 @@ invoked with. The following programs are included:
   ts
   vipe
   vidir
+  zrun
 "
     );
 }
@@ -42,6 +43,7 @@ fn main() -> io::Result<()> {
         Some("ts") => moreutils::ts(),
         Some("vipe") => moreutils::vipe(),
         Some("vidir") => moreutils::vidir(),
+        Some(z) if z.starts_with("z") => moreutils::zrun(),
         Some("moreutils") => {
             usage();
             Ok(())
