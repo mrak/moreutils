@@ -1,10 +1,9 @@
 use std::env;
-use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::exit;
 
 fn usage() {
@@ -12,10 +11,10 @@ fn usage() {
 }
 
 pub fn sponge() -> io::Result<()> {
-    let args: Vec<OsString> = env::args_os().skip(1).collect();
-    let (append, file) = match args.len() {
-        2 => (args[0].eq("-a"), Path::new(&args[1])),
-        1 => (false, Path::new(&args[0])),
+    let mut args = env::args_os().skip(1);
+    let (append, file) = match (args.next(), args.next()) {
+        (Some(a), Some(f)) if a == "-a" => (true, PathBuf::from(&f)),
+        (Some(f), None) => (false, PathBuf::from(&f)),
         _ => {
             usage();
             exit(1)
