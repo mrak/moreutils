@@ -1,3 +1,4 @@
+use signal_hook::{consts::SIGPIPE, iterator::Signals};
 use std::{
     env,
     ffi::OsString,
@@ -5,9 +6,6 @@ use std::{
     process::{self, Child, Command, Stdio},
     thread,
 };
-
-#[cfg(unix)]
-use signal_hook::{consts::SIGPIPE, iterator::Signals};
 
 pub fn pee() -> io::Result<()> {
     let mut double_dash = false;
@@ -30,7 +28,6 @@ pub fn pee() -> io::Result<()> {
         }
     }
 
-    #[cfg(unix)]
     if !ignore_sigpipe {
         let mut signals = Signals::new([SIGPIPE])?;
         thread::Builder::new()
