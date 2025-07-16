@@ -25,7 +25,7 @@ were made where possible to support non-UTF8 filenames.
 - [x] `ts`
 - [x] `vidir`
 - [x] `vipe`
-- [ ] `zrun`
+- [x] `zrun`
 
 ## Will not implement
 
