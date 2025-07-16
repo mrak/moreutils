@@ -4,13 +4,15 @@ use std::{
     fs::{self, File},
     io,
     os::unix::ffi::OsStrExt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{self, Child, Command, Stdio},
 };
 
 fn usage() {
     println!("Usage: zrun <command> <args>");
 }
+
+type Decompressor = (Box<Child>, OsString);
 
 enum Archive {
     Gzip,
@@ -46,63 +48,78 @@ pub fn zrun() -> io::Result<()> {
         }
     };
 
-    let mut decompressors: Vec<(Option<&mut Child>, &OsStr)> = Vec::new();
-    let cmd_args: Vec<OsString> = args
-        .map(|arg| {
-            if arg.as_bytes().ends_with(b".gz") || arg.as_bytes().ends_with(b".Z") {
-                let pb = PathBuf::from(&arg);
-                let pb = pb.file_stem().expect("TODO").to_owned();
-                let mut rand = 0;
-                loop {
-                    rand += 1;
-                    let mut tmpfilename = OsString::from(format!("zrun_{}.", std::process::id()));
-                    tmpfilename.push(rand.to_string());
-                    tmpfilename.push(&pb);
-                    let tmpfilepath = PathBuf::from(&tmpfilename);
-                    if let Ok(false) = tmpfilepath.try_exists() {
-                        let child = decompress(Archive::Gzip, arg, &tmpfilepath);
-                        decompressors.push((Some(&mut child), &tmpfilename));
-                        return tmpfilename;
-                    }
+    let mut cmd_args: Vec<(Option<Decompressor>, OsString)> = Vec::new();
+    for arg in args {
+        if arg.as_bytes().ends_with(b".gz") || arg.as_bytes().ends_with(b".Z") {
+            let pb = PathBuf::from(&arg);
+            let pb = pb.file_stem().expect("TODO").to_owned();
+            let mut rand = 0;
+            let mut tmpfilename: OsString;
+            let mut tmpfilepath: PathBuf;
+            loop {
+                rand += 1;
+                tmpfilename = OsString::from(format!("zrun_{}.", std::process::id()));
+                tmpfilename.push(rand.to_string());
+                tmpfilename.push(&pb);
+                tmpfilepath = PathBuf::from(&tmpfilename);
+                if let Ok(false) = tmpfilepath.try_exists() {
+                    break;
                 }
-            } else {
-                arg
             }
-        })
-        .collect();
+            let child: Box<Child> = decompress(Archive::Gzip, &arg, &tmpfilepath);
+            cmd_args.push((Some((child, arg)), tmpfilename));
+        } else {
+            cmd_args.push((None, arg));
+        }
+    }
 
-    for (child, file) in decompressors.iter_mut() {
-        match child.wait() {
-            Ok(status) => match status.code() {
+    for (decompressor, _) in cmd_args.iter_mut() {
+        if let Some((child, file)) = decompressor {
+            match child.wait().ok().and_then(|s| s.code()) {
                 Some(0) => {}
                 _ => {
                     eprintln!("zrun: failed to decompress file: {file:?}");
                     process::exit(1);
                 }
-            },
-            Err(_) => {
-                eprintln!("zrun: failed to decompress file: {file:?}");
-                process::exit(1);
             }
         }
     }
 
-    println!("{} {:?}", command.display(), cmd_args);
-    for (_, f) in decompressors {
-        fs::remove_file(f)?;
+    let child = Command::new(&command)
+        .args(cmd_args.iter().map(|(_, arg)| arg))
+        .spawn();
+
+    let exit_code = match child {
+        Ok(mut child) => match child.wait() {
+            Ok(status) => status.code().unwrap_or(1),
+            Err(_) => 1,
+        },
+        Err(e) => {
+            eprintln!("zrun: failed to execute command: {}", command.display());
+            eprintln!("{e}");
+            1
+        }
+    };
+
+    for (decompressor, file) in cmd_args {
+        if decompressor.is_some() {
+            fs::remove_file(file)?;
+        }
     }
-    Ok(())
+    process::exit(exit_code);
 }
 
-fn decompress(archive_type: Archive, archive: OsString, tmpfilepath: &PathBuf) -> Child {
+fn decompress(archive_type: Archive, archive: &OsString, tmpfilepath: &PathBuf) -> Box<Child> {
     let tmpfile = File::create(tmpfilepath).expect("TODO");
     match archive_type {
-        Archive::Gzip => Command::new("gzip")
-            .arg("-d")
-            .arg("-c")
-            .arg(archive)
-            .stdout(Stdio::from(tmpfile))
-            .spawn()
-            .expect("TODO"),
+        Archive::Gzip => Box::new(
+            Command::new("gzip")
+                .arg("-d")
+                .arg("-c")
+                .arg(archive)
+                .stdout(Stdio::from(tmpfile))
+                .spawn()
+                .expect("TODO"),
+        ),
     }
 }
