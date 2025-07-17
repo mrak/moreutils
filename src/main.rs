@@ -11,10 +11,12 @@ invoked with. The following programs are included:
   chronic
   combine
   errno
+  ifdata
   ifne
   isutf8
   mispipe
   pee
+  parallel
   sponge
   ts
   vipe
@@ -35,9 +37,11 @@ fn main() -> io::Result<()> {
         Some("chronic") => moreutils::chronic(),
         Some("combine" | "_") => moreutils::combine(),
         Some("errno") => moreutils::errno(),
+        Some("ifdata") => moreutils::ifdata(),
         Some("ifne") => moreutils::ifne(),
         Some("isutf8") => moreutils::isutf8(),
         Some("mispipe") => moreutils::mispipe(),
+        Some("parallel") => moreutils::parallel(),
         Some("pee") => moreutils::pee(),
         Some("sponge") => moreutils::sponge(),
         Some("ts") => moreutils::ts(),
