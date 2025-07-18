@@ -1,10 +1,10 @@
 use std::{
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fmt::Display,
     fs::File,
     io::{self, BufRead, BufReader, Read},
-    os::unix::ffi::OsStringExt,
+    os::unix::ffi::{OsStrExt, OsStringExt},
     process,
 };
 
@@ -63,59 +63,56 @@ fn usage() {
     println!("  -v, --verbose    print detailed error (multiple lines)");
 }
 
-pub fn isutf8() -> io::Result<()> {
+fn parse_args() -> Result<Options, lexopt::Error> {
+    use lexopt::prelude::*;
     let mut options = Options::default();
-    let mut double_dash = false;
-
-    for arg in env::args_os().skip(1) {
-        if double_dash {
-            options.files.push(arg);
-            continue;
-        }
-        match arg.to_str() {
-            Some("--") => double_dash = true,
-            Some("--help") => {
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Short('h') | Long("help") => {
                 usage();
                 process::exit(0);
             }
-            Some("--invert") => options.display_mode = DisplayMode::Invert,
-            Some("--list") => options.display_mode = DisplayMode::List,
-            Some("--quiet") => options.display_mode = DisplayMode::Quiet,
-            Some("--verbose") => options.display_mode = DisplayMode::Verbose,
-            Some("-") => options.files.push(arg),
-            Some(x) if x.starts_with("-") => {
-                for flag in x.chars().skip(1) {
-                    match flag {
-                        'h' => {
-                            usage();
-                            process::exit(0);
-                        }
-                        'i' => options.display_mode = DisplayMode::Invert,
-                        'l' => options.display_mode = DisplayMode::List,
-                        'q' => options.display_mode = DisplayMode::Quiet,
-                        'v' => options.display_mode = DisplayMode::Verbose,
-                        _ => {
-                            eprintln!("isutf8: invalid option -- {flag}");
-                            usage();
-                            process::exit(1);
-                        }
-                    }
-                }
-            }
-            _ => options.files.push(arg),
+            Short('i') | Long("invert") => options.display_mode = DisplayMode::Invert,
+            Short('l') | Long("list") => options.display_mode = DisplayMode::List,
+            Short('q') | Long("quiet") => options.display_mode = DisplayMode::Quiet,
+            Short('v') | Long("verbose") => options.display_mode = DisplayMode::Verbose,
+            Value(val) => options.files.push(val),
+            _ => return Err(arg.unexpected()),
         }
     }
+    Ok(options)
+}
+
+pub fn isutf8() -> io::Result<()> {
+    let mut options: Options = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        usage();
+        process::exit(1);
+    });
 
     if options.files.is_empty() {
         let mut buffer: Vec<u8> = Vec::new();
         let stdin = io::stdin();
         let mut stdin = stdin.lock();
 
-        while let Ok(c) = stdin.read_until(b'\n', &mut buffer) {
-            if c == 0 {
+        loop {
+            buffer.clear();
+            let bytes_read = stdin.read_until(b'\n', &mut buffer)?;
+            if bytes_read == 0 {
                 break;
             }
-            options.files.push(OsString::from_vec(buffer.clone()));
+            let bytes = buffer
+                .last()
+                .map(|b| {
+                    if *b == b'\n' {
+                        &buffer[..buffer.len() - 1]
+                    } else {
+                        &buffer
+                    }
+                })
+                .expect("buffer has at least one byte");
+            options.files.push(OsStr::from_bytes(bytes).to_owned());
         }
     }
 

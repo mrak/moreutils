@@ -16,39 +16,47 @@ enum Op {
     Xor,
 }
 
-pub fn combine() -> io::Result<()> {
+struct Args {
+    file1: PathBuf,
+    op: Op,
+    file2: PathBuf,
+}
+
+fn parse_args() -> Result<Args, String> {
     let args: Vec<OsString> = env::args_os().collect();
     if args.len() < 4 || args.len() > 5 {
-        usage();
-        process::exit(1);
+        return Err(String::from("unexpected number of arguments"));
     }
     if (args.len() == 5) && (args.first().unwrap() != "_" || args.last().unwrap() != "_") {
-        usage();
-        process::exit(1);
+        return Err(String::from("unexpected number of arguments"));
     }
     let file1 = PathBuf::from(&args.get(1).unwrap());
-    let op_arg = args.get(2).unwrap();
-    let file2 = PathBuf::from(&args.get(3).unwrap());
-
-    let op = match op_arg.to_str() {
+    let op = match args.get(2).unwrap().to_str() {
         Some("and") => Op::And,
         Some("not") => Op::Not,
         Some("or") => Op::Or,
         Some("xor") => Op::Xor,
-        _ => {
-            eprintln!("unknown operation, {op_arg:?}");
-            process::exit(255);
-        }
+        _ => return Err(String::from("unknown operation, {op_arg:?}")),
     };
+    let file2 = PathBuf::from(&args.get(3).unwrap());
+    Ok(Args { file1, op, file2 })
+}
+
+pub fn combine() -> io::Result<()> {
+    let args = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        usage();
+        process::exit(1);
+    });
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
-    match op {
-        Op::And => op_and(&mut stdout, &file1, &file2),
-        Op::Not => op_not(&mut stdout, &file1, &file2),
-        Op::Or => op_or(&mut stdout, &file1, &file2),
-        Op::Xor => op_xor(&mut stdout, &file1, &file2),
+    match args.op {
+        Op::And => op_and(&mut stdout, &args.file1, &args.file2),
+        Op::Not => op_not(&mut stdout, &args.file1, &args.file2),
+        Op::Or => op_or(&mut stdout, &args.file1, &args.file2),
+        Op::Xor => op_xor(&mut stdout, &args.file1, &args.file2),
     }
 }
 

@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::OpenOptions;
 use std::io;
 use std::io::Read;
@@ -10,16 +9,37 @@ fn usage() {
     eprintln!("Usage: sponge [-a] FILE");
 }
 
-pub fn sponge() -> io::Result<()> {
-    let mut args = env::args_os().skip(1);
-    let (append, file) = match (args.next(), args.next()) {
-        (Some(a), Some(f)) if a == "-a" => (true, PathBuf::from(&f)),
-        (Some(f), None) => (false, PathBuf::from(&f)),
-        _ => {
-            usage();
-            exit(1)
+struct Args {
+    append: bool,
+    file: PathBuf,
+}
+
+fn parse_args() -> Result<Args, lexopt::Error> {
+    use lexopt::prelude::*;
+
+    let mut append = false;
+    let mut file: Option<PathBuf> = None;
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Short('a') => append = true,
+            Value(val) if file.is_none() => file = Some(PathBuf::from(&val)),
+            _ => return Err(arg.unexpected()),
         }
-    };
+    }
+
+    Ok(Args {
+        append,
+        file: file.ok_or("missing argument FILE")?,
+    })
+}
+
+pub fn sponge() -> io::Result<()> {
+    let args = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        usage();
+        exit(1);
+    });
 
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
@@ -28,10 +48,10 @@ pub fn sponge() -> io::Result<()> {
 
     OpenOptions::new()
         .create(true)
-        .append(append)
-        .truncate(!append)
+        .append(args.append)
+        .truncate(!args.append)
         .write(true)
-        .open(file)?
+        .open(args.file)?
         .write_all(&buffer)?;
 
     Ok(())

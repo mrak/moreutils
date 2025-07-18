@@ -1,26 +1,45 @@
 pub mod errno_generated;
 pub use errno_generated::{ERRNOS, Errno};
 use regex::Regex;
-use std::{env, io, process};
+use std::{io, process};
+
+fn usage() {
+    eprintln!("Usage: errno [-lsS] [--list] [--search] [--search-all-locales] [keyword]");
+}
+
+fn parse_args() -> Result<Mode, lexopt::Error> {
+    use lexopt::prelude::*;
+    let mut mode: Option<Mode> = None;
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Short('l') | Long("list") if mode.is_none() => mode = Some(Mode::List),
+            Short('s') | Long("search") if mode.is_none() => {
+                mode = Some(Mode::Search(parser.value()?.parse()?))
+            }
+            Short('S') | Long("search-all-locales") if mode.is_none() => {
+                mode = Some(Mode::SearchAllLocale(parser.value()?.parse()?))
+            }
+            Value(val) if mode.is_none() => {
+                mode = Some(if let Ok(i) = val.parse::<i32>() {
+                    Mode::LookupCode(i)
+                } else {
+                    Mode::LookupName(val.parse()?)
+                });
+            }
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    Ok(mode.unwrap())
+}
 
 pub fn errno() -> io::Result<()> {
     let re = Regex::new(r" \(os error \d+\)").expect("compile static regex");
-    let mut args = env::args().skip(1).peekable();
-    let mode = match args.peek().map(|a| a.as_ref()) {
-        Some("-l") => Mode::List,
-        Some("-s") => Mode::Search(args.nth(1).expect("-s needs an argument")),
-        Some("-S") => Mode::SearchAllLocale(args.nth(1).expect("-S needs an argument")),
-        Some(a) => {
-            if let Ok(i) = a.parse::<i32>() {
-                Mode::LookupCode(i)
-            } else {
-                Mode::LookupName(String::from(a))
-            }
-        }
-        None => {
-            process::exit(0);
-        }
-    };
+    let mode = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        usage();
+        process::exit(1);
+    });
 
     match mode {
         Mode::List => {
