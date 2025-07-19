@@ -1,34 +1,56 @@
 use signal_hook::{consts::SIGPIPE, iterator::Signals};
 use std::{
-    env,
     ffi::OsString,
     io::{self, BufRead, Write},
     process::{self, Child, Command, Stdio},
     thread,
 };
 
-pub fn pee() -> io::Result<()> {
-    let mut double_dash = false;
+fn usage() {
+    eprintln!(r#"Usage: [--[no-]ignore-sigpipe] [--[no-]ignore-write-errors] ["command"...]"#);
+}
+
+struct Args {
+    ignore_sigpipe: bool,
+    ignore_write_errors: bool,
+    commands: Vec<OsString>,
+}
+
+fn parse_args() -> Result<Args, lexopt::Error> {
+    use lexopt::prelude::*;
     let mut ignore_sigpipe = true;
     let mut ignore_write_errors = true;
     let mut commands: Vec<OsString> = Vec::new();
-
-    for arg in env::args_os().skip(1) {
-        if double_dash {
-            commands.push(arg);
-            continue;
-        }
-        match arg.to_str() {
-            Some("--") => double_dash = true,
-            Some("--ignore-sigpipe") => ignore_sigpipe = true,
-            Some("--no-ignore-sigpipe") => ignore_sigpipe = false,
-            Some("--ignore-write-errors") => ignore_write_errors = true,
-            Some("--no-ignore-write-errors") => ignore_write_errors = false,
-            _ => commands.push(arg),
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Long("ignore-sigpipe") => ignore_sigpipe = true,
+            Long("no-ignore-sigpipe") => ignore_sigpipe = false,
+            Long("ignore-write-errors") => ignore_write_errors = true,
+            Long("no-ignore-write-errors") => ignore_write_errors = false,
+            Value(val) => commands.push(val),
+            _ => return Err(arg.unexpected()),
         }
     }
+    if commands.is_empty() {
+        return Err(lexopt::Error::from("expected COMMAND"));
+    }
 
-    if !ignore_sigpipe {
+    Ok(Args {
+        ignore_sigpipe,
+        ignore_write_errors,
+        commands,
+    })
+}
+
+pub fn pee() -> io::Result<()> {
+    let args: Args = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        usage();
+        process::exit(1);
+    });
+
+    if !args.ignore_sigpipe {
         let mut signals = Signals::new([SIGPIPE])?;
         thread::Builder::new()
             .name(String::from("SIGPIPE-handler"))
@@ -39,7 +61,8 @@ pub fn pee() -> io::Result<()> {
             })?;
     }
 
-    let mut children: Vec<Child> = commands
+    let mut children: Vec<Child> = args
+        .commands
         .into_iter()
         .map(|command| {
             Command::new("/bin/sh")
@@ -64,7 +87,7 @@ pub fn pee() -> io::Result<()> {
         let mut peed = false;
         for child in &mut children {
             if let Some(write_result) = child.stdin.as_ref().map(|mut s| s.write_all(buffer)) {
-                if write_result.is_err() && !ignore_write_errors {
+                if write_result.is_err() && !args.ignore_write_errors {
                     exit_children(&mut children, true)?;
                     process::exit(1);
                 }

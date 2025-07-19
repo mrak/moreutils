@@ -20,16 +20,18 @@ fn parse_args() -> Result<Args, lexopt::Error> {
     use lexopt::prelude::*;
     let mut invert = false;
     let mut command: Option<OsString> = None;
-    let mut arguments: Vec<OsString> = Vec::new();
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
         match arg {
-            Short('n') if command.is_none() => invert = true,
-            Value(cmd) if command.is_none() => command = Some(cmd),
-            Value(arg) => arguments.push(arg),
+            Short('n') => invert = true,
+            Value(cmd) => {
+                command = Some(cmd);
+                break;
+            }
             _ => return Err(arg.unexpected()),
         }
     }
+    let arguments: Vec<OsString> = parser.raw_args()?.collect();
 
     Ok(Args {
         invert,

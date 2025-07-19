@@ -13,11 +13,9 @@ fn parse_args() -> Result<Mode, lexopt::Error> {
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
         match arg {
-            Short('l') | Long("list") if mode.is_none() => mode = Some(Mode::List),
-            Short('s') | Long("search") if mode.is_none() => {
-                mode = Some(Mode::Search(parser.value()?.parse()?))
-            }
-            Short('S') | Long("search-all-locales") if mode.is_none() => {
+            Short('l') | Long("list") => mode = Some(Mode::List),
+            Short('s') | Long("search") => mode = Some(Mode::Search(parser.value()?.parse()?)),
+            Short('S') | Long("search-all-locales") => {
                 mode = Some(Mode::SearchAllLocale(parser.value()?.parse()?))
             }
             Value(val) if mode.is_none() => {
@@ -30,7 +28,7 @@ fn parse_args() -> Result<Mode, lexopt::Error> {
             _ => return Err(arg.unexpected()),
         }
     }
-    Ok(mode.unwrap())
+    mode.ok_or(lexopt::Error::from("expected argument"))
 }
 
 pub fn errno() -> io::Result<()> {

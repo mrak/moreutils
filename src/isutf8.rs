@@ -1,10 +1,9 @@
 use std::{
-    env,
     ffi::{OsStr, OsString},
     fmt::Display,
     fs::File,
     io::{self, BufRead, BufReader, Read},
-    os::unix::ffi::{OsStrExt, OsStringExt},
+    os::unix::ffi::OsStrExt,
     process,
 };
 
