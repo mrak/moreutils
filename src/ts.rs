@@ -5,7 +5,6 @@ use chrono::TimeDelta;
 use core::convert::From;
 use regex::Captures;
 use regex::Regex;
-use std::env;
 use std::fmt::Write as FmtWrite; // Avoid conflict with io::Write
 use std::io;
 use std::io::BufRead;
@@ -26,55 +25,64 @@ enum TimeMode {
     SinceStart,
 }
 
-pub fn ts() -> io::Result<()> {
+struct Args {
+    relative: bool,
+    time_mode: TimeMode,
+    monotonic: bool,
+    format_arg: Option<String>,
+}
+
+fn parse_args() -> Result<Args, lexopt::Error> {
+    use lexopt::prelude::*;
     let mut relative = false;
     let mut time_mode = TimeMode::Absolute;
     let mut monotonic = false;
     let mut format_arg = None;
-    let mut double_dash = false;
-
-    let args = env::args().skip(1);
-    for arg in args {
-        match arg.as_ref() {
-            "--" => double_dash = true,
-            x if x.starts_with("-") && !double_dash => {
-                for flag in x.chars().skip(1) {
-                    match flag {
-                        'r' => relative = true,
-                        'i' => time_mode = TimeMode::Incremental,
-                        's' => time_mode = TimeMode::SinceStart,
-                        'm' => monotonic = true,
-                        c => {
-                            eprintln!("Unknown option: {c}");
-                            usage();
-                            process::exit(1);
-                        }
-                    }
-                }
-            }
-            x => format_arg = Some(x.to_owned()),
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Short('r') => relative = true,
+            Short('i') => time_mode = TimeMode::Incremental,
+            Short('s') => time_mode = TimeMode::SinceStart,
+            Short('m') => monotonic = true,
+            Value(val) if format_arg.is_none() => format_arg = Some(val.parse()?),
+            _ => return Err(arg.unexpected()),
         }
     }
+    Ok(Args {
+        relative,
+        time_mode,
+        monotonic,
+        format_arg,
+    })
+}
+
+pub fn ts() -> io::Result<()> {
+    let args: Args = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        usage();
+        process::exit(1);
+    });
 
     let stdin = io::stdin();
     let stdin = stdin.lock();
     let stdout = io::stdout();
     let mut stdout = BufWriter::new(stdout.lock());
 
-    if relative {
-        return time_is_relative(stdin, &mut stdout, format_arg);
+    if args.relative {
+        return time_is_relative(stdin, &mut stdout, args.format_arg);
     }
 
-    let format_default = match time_mode {
+    let format_default = match args.time_mode {
         TimeMode::Absolute => String::from("%b %d %H:%M:%S"),
         _ => String::from("%H:%M:%S"),
     };
-    let format = format_arg.unwrap_or(format_default);
+    let format = args.format_arg.unwrap_or(format_default);
 
-    if monotonic {
-        with_monotonic_clock(stdin, &mut stdout, time_mode, &format)?;
+    if args.monotonic {
+        with_monotonic_clock(stdin, &mut stdout, args.time_mode, &format)?;
     } else {
-        with_system_clock(stdin, &mut stdout, time_mode, &format)?;
+        with_system_clock(stdin, &mut stdout, args.time_mode, &format)?;
     }
     Ok(())
 }
