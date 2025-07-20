@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io;
@@ -11,25 +12,32 @@ fn usage() {
     eprintln!("Usage: vipe [--suffix=EXTENSION]");
 }
 
-pub fn vipe() -> io::Result<()> {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let suffix = match args.len() {
-        2 if args[0].eq("--suffix") => Some(args[1].clone()),
-        1 if args[0].starts_with("--suffix=") => {
-            Some(args[0].strip_prefix("--suffix=").map(String::from).unwrap())
-        }
-        0 => None,
-        _ => {
-            usage();
-            exit(1)
-        }
-    };
+type Suffix = Option<OsString>;
 
-    let mut tmpfilename = format!("vipe_{}", std::process::id());
-    if let Some(s) = suffix {
-        tmpfilename.push_str(format!(".{s}").as_ref());
+fn parse_args() -> Result<Suffix, lexopt::Error> {
+    use lexopt::prelude::*;
+    let mut suffix = None;
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Long("suffix") => suffix = Some(parser.value()?),
+            _ => return Err(arg.unexpected()),
+        }
     }
-    let tmpfile = env::temp_dir().join(tmpfilename);
+    Ok(suffix)
+}
+
+pub fn vipe() -> io::Result<()> {
+    let suffix = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        usage();
+        exit(1);
+    });
+
+    let mut tmpfile = env::temp_dir().join(format!("vipe_{}", std::process::id()));
+    if let Some(s) = suffix {
+        tmpfile.set_extension(&s);
+    }
 
     let result = stdin_to_tmpfile(&tmpfile)
         .and_then(|_| common::edit_tmpfile(&tmpfile))
