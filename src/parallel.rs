@@ -11,6 +11,12 @@ fn usage() {
     eprintln!("        run specified commands in parallel");
 }
 
+#[derive(Debug)]
+enum CommandMode {
+    Single(OsString, Vec<OsString>, Vec<OsString>),
+    Multi(Vec<OsString>),
+}
+
 pub fn parallel() -> io::Result<()> {
     let mut interpolate = false;
     let mut n_args: usize = 1;
@@ -72,14 +78,15 @@ pub fn parallel() -> io::Result<()> {
         }
     }
 
-    if let Some("--") = args.peek().and_then(|a| a.to_str()) {
-        let commands: Vec<OsString> = args.skip(1).collect();
+    let mode = if let Some("--") = args.peek().and_then(|a| a.to_str()) {
+        CommandMode::Multi(args.skip(1).collect())
     } else {
         let command = args.next().unwrap();
         let (fixed_args, parallel_args) = split_args(args);
-    }
+        CommandMode::Single(command, fixed_args, parallel_args)
+    };
 
-    println!("-i {interpolate} -l {maxload:?} -j {maxjobs:?} -n {n_args}");
+    println!("-i {interpolate} -l {maxload:?} -j {maxjobs:?} -n {n_args} {mode:?}");
     Ok(())
 }
 
