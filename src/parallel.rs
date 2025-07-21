@@ -5,6 +5,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::process::exit;
 use std::thread;
 
+use sysinfo::System;
+
 fn usage() {
     eprintln!("parallel [OPTIONS] command -- arguments");
     eprintln!("        for each argument, run command iwth argument, in parallel");
@@ -12,11 +14,7 @@ fn usage() {
     eprintln!("        run specified commands in parallel");
 }
 
-#[derive(Debug)]
-enum CommandMode {
-    Single(OsString, Vec<OsString>, Vec<OsString>),
-    Multi(Vec<OsString>),
-}
+type Execution = (OsString, Vec<OsString>);
 
 pub fn parallel() -> io::Result<()> {
     let mut interpolate = false;
@@ -78,15 +76,27 @@ pub fn parallel() -> io::Result<()> {
         }
     }
 
-    let mode = if let Some("--") = args.peek().and_then(|a| a.to_str()) {
-        CommandMode::Multi(args.skip(1).collect())
+    let executions: Vec<Execution> = if let Some("--") = args.peek().and_then(|a| a.to_str()) {
+        args.skip(1)
+            .map(|a| (OsString::from("sh"), vec![OsString::from("-c"), a]))
+            .collect()
     } else {
         let command = args.next().unwrap();
         let (fixed_args, parallel_args) = split_args(args);
-        CommandMode::Single(command, fixed_args, parallel_args)
+        parallel_args
+            .into_iter()
+            .map(|a| {
+                let mut fa = fixed_args.clone();
+                fa.push(a);
+                (command.clone(), fa)
+            })
+            .collect()
     };
 
-    println!("-i {interpolate} -l {maxload:?} -j {maxjobs:?} -n {n_args} {mode:?}");
+    println!("-i {interpolate} -l {maxload:?} -j {maxjobs:?} -n {n_args}");
+    for e in executions {
+        println!("{e:?}");
+    }
     Ok(())
 }
 
@@ -109,4 +119,8 @@ where
     }
 
     (before, after)
+}
+
+fn get_load_average() -> f64 {
+    System::load_average().one
 }
