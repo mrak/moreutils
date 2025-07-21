@@ -6,7 +6,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::{env, fs, io, process};
 
-use crate::common;
+use crate::common::{self, OsLinesExt};
 
 fn usage() {
     eprintln!("Usage: vidir [--verbose] [DIRECTORY|FILE|-]...");
@@ -80,25 +80,9 @@ fn entries_from_args() -> io::Result<(Vec<PathBuf>, bool)> {
         match source.to_str() {
             Some("-") => {
                 let stdin = io::stdin();
-                let mut buffer = Vec::new();
-                let mut reader = BufReader::new(stdin.lock());
-                loop {
-                    buffer.clear();
-                    let bytes_read = reader.read_until(b'\n', &mut buffer)?;
-                    if bytes_read == 0 {
-                        break;
-                    }
-                    let bytes = buffer
-                        .last()
-                        .map(|b| {
-                            if *b == b'\n' {
-                                &buffer[..buffer.len() - 1]
-                            } else {
-                                &buffer
-                            }
-                        })
-                        .expect("buffer has at least one byte");
-                    let pb = PathBuf::from(OsStr::from_bytes(bytes));
+                let reader = stdin.lock();
+                for os_line in reader.os_lines() {
+                    let pb = PathBuf::from(os_line?);
                     if (pb.is_file() || pb.is_symlink()) && unique_files.insert(pb.clone()) {
                         files.push(pb);
                     }

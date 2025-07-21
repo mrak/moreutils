@@ -7,7 +7,7 @@ use std::{
     process,
 };
 
-use crate::common::RingBuffer;
+use crate::common::{OsLinesExt, RingBuffer};
 
 #[derive(Default, Debug)]
 enum DisplayMode {
@@ -91,28 +91,12 @@ pub fn isutf8() -> io::Result<()> {
     });
 
     if options.files.is_empty() {
-        let mut buffer: Vec<u8> = Vec::new();
         let stdin = io::stdin();
-        let mut stdin = stdin.lock();
+        let stdin = stdin.lock();
 
-        loop {
-            buffer.clear();
-            let bytes_read = stdin.read_until(b'\n', &mut buffer)?;
-            if bytes_read == 0 {
-                break;
-            }
-            let bytes = buffer
-                .last()
-                .map(|b| {
-                    if *b == b'\n' {
-                        &buffer[..buffer.len() - 1]
-                    } else {
-                        &buffer
-                    }
-                })
-                .expect("buffer has at least one byte");
-            options.files.push(OsStr::from_bytes(bytes).to_owned());
-        }
+        options.files = stdin
+            .os_lines()
+            .collect::<Result<Vec<OsString>, io::Error>>()?;
     }
 
     let mut exit_code = 0;

@@ -1,7 +1,9 @@
 use std::cmp::min;
 use std::env;
+use std::ffi::OsString;
 use std::fs::OpenOptions;
-use std::io;
+use std::io::{self, BufRead};
+use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
@@ -85,4 +87,49 @@ fn rotate_vector<T>(vec: &mut [T], n: usize) {
     vec.reverse();
     vec[0..n].reverse();
     vec[n..].reverse();
+}
+
+pub struct OsLines<B> {
+    reader: B,
+    buf: Vec<u8>,
+}
+
+impl<B: BufRead> Iterator for OsLines<B> {
+    type Item = io::Result<OsString>;
+
+    fn next(&mut self) -> Option<io::Result<OsString>> {
+        self.buf.clear();
+
+        match self.reader.read_until(b'\n', &mut self.buf) {
+            Ok(0) => None,
+            Ok(_) => {
+                if self.buf.ends_with(b"\n") {
+                    self.buf.pop();
+                    if self.buf.ends_with(b"\r") {
+                        self.buf.pop();
+                    }
+                }
+                Some(Ok(OsString::from_vec(self.buf.clone())))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+pub trait OsLinesExt: BufRead {
+    fn os_lines(self) -> OsLines<Self>
+    where
+        Self: Sized;
+}
+
+impl<R: BufRead> OsLinesExt for R {
+    fn os_lines(self) -> OsLines<Self>
+    where
+        Self: Sized,
+    {
+        OsLines {
+            reader: self,
+            buf: Vec::new(),
+        }
+    }
 }
