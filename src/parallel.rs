@@ -3,6 +3,7 @@ use std::ffi::OsString;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::process::exit;
+use std::thread;
 
 fn usage() {
     eprintln!("parallel [OPTIONS] command -- arguments");
@@ -21,7 +22,7 @@ pub fn parallel() -> io::Result<()> {
     let mut interpolate = false;
     let mut n_args: usize = 1;
     let mut maxload: Option<f64> = None;
-    let mut maxjobs: Option<usize> = None;
+    let mut maxjobs = thread::available_parallelism().map_or(1, |n| n.get());
 
     let mut args = env::args_os().skip(1).peekable();
 
@@ -61,14 +62,13 @@ pub fn parallel() -> io::Result<()> {
                 )
             }
             Some("-j") => {
-                maxjobs = Some(
-                    args.next()
-                        .and_then(|os_str| os_str.to_str().and_then(|s| s.parse::<usize>().ok()))
-                        .unwrap_or_else(|| {
-                            eprintln!("parallel: -j requires a positive integer argument");
-                            exit(1);
-                        }),
-                )
+                maxjobs = args
+                    .next()
+                    .and_then(|os_str| os_str.to_str().and_then(|s| s.parse::<usize>().ok()))
+                    .unwrap_or_else(|| {
+                        eprintln!("parallel: -j requires a positive integer argument");
+                        exit(1);
+                    })
             }
             _ => {
                 eprintln!("parallel: invalid option -- '{}'", arg.display());
