@@ -1,9 +1,8 @@
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fmt::Display,
     fs::File,
-    io::{self, BufRead, BufReader, Read},
-    os::unix::ffi::OsStrExt,
+    io::{self, BufReader, Read},
     process,
 };
 

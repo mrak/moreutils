@@ -2,7 +2,9 @@ use std::env;
 use std::ffi::OsString;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
-use std::process::exit;
+use std::os::unix::process::ExitStatusExt;
+use std::process::{Child, Command, exit};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
 use sysinfo::System;
@@ -14,7 +16,11 @@ fn usage() {
     eprintln!("        run specified commands in parallel");
 }
 
-type Execution = (OsString, Vec<OsString>);
+#[derive(Debug)]
+struct Execution {
+    command: OsString,
+    args: Vec<OsString>,
+}
 
 pub fn parallel() -> io::Result<()> {
     let mut interpolate = false;
@@ -25,11 +31,7 @@ pub fn parallel() -> io::Result<()> {
     let mut args = env::args_os().skip(1).peekable();
 
     while let Some(arg) = args.peek() {
-        if arg == "--" {
-            break;
-        }
-
-        if arg.as_bytes().first().is_none_or(|b| *b != b'-') {
+        if arg == "--" || arg.as_bytes().first().is_none_or(|b| *b != b'-') {
             break;
         }
 
@@ -76,28 +78,97 @@ pub fn parallel() -> io::Result<()> {
         }
     }
 
-    let executions: Vec<Execution> = if let Some("--") = args.peek().and_then(|a| a.to_str()) {
+    let jobs: Vec<Execution> = if let Some("--") = args.peek().and_then(|a| a.to_str()) {
         args.skip(1)
-            .map(|a| (OsString::from("sh"), vec![OsString::from("-c"), a]))
+            .map(|a| Execution {
+                command: OsString::from("sh"),
+                args: vec![OsString::from("-c"), a],
+            })
             .collect()
     } else {
         let command = args.next().unwrap();
         let (fixed_args, parallel_args) = split_args(args);
         parallel_args
-            .into_iter()
-            .map(|a| {
+            .chunks(n_args)
+            .map(|chunk| {
                 let mut fa = fixed_args.clone();
-                fa.push(a);
-                (command.clone(), fa)
+                fa.extend_from_slice(chunk);
+                Execution {
+                    command: command.clone(),
+                    args: fa,
+                }
             })
             .collect()
     };
 
     println!("-i {interpolate} -l {maxload:?} -j {maxjobs:?} -n {n_args}");
-    for e in executions {
+    for e in jobs.iter() {
         println!("{e:?}");
     }
-    Ok(())
+
+    let exit_code = if jobs.len() <= maxjobs && maxload.is_none() {
+        spawn_all(jobs)?
+    } else {
+        pool_jobs(maxjobs, maxload, jobs)?
+    };
+
+    exit(exit_code);
+}
+
+fn pool_jobs(maxjobs: usize, maxload: Option<f64>, jobs: Vec<Execution>) -> io::Result<i32> {
+    let (job_tx, job_rx): (mpsc::Sender<Execution>, mpsc::Receiver<Execution>) = mpsc::channel();
+    let (code_tx, code_rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel();
+    let job_rx_arc = Arc::new(Mutex::new(job_rx));
+    for i in 0..maxjobs {
+        let blah = i;
+        let rx = Arc::clone(&job_rx_arc);
+        let tx = code_tx.clone();
+        thread::spawn(move || {
+            while let Ok(e) = rx.lock().unwrap().recv() {
+                println!("executing from pool {blah}");
+                match Command::new(&e.command).args(&e.args).status() {
+                    Ok(status) => {
+                        let _ = tx.send(status.code().unwrap_or(1));
+                    }
+                    Err(_) => {
+                        let _ = tx.send(1);
+                    }
+                };
+            }
+        });
+    }
+
+    let n = jobs.len();
+    let mut exit_code = 0;
+
+    for job in jobs {
+        let _ = job_tx.send(job);
+    }
+
+    for _ in 0..n {
+        match code_rx.recv() {
+            Ok(code) => exit_code |= code,
+            Err(_) => todo!(),
+        }
+    }
+    Ok(exit_code)
+}
+
+fn spawn_all(jobs: Vec<Execution>) -> io::Result<i32> {
+    let children = jobs
+        .iter()
+        .map(|e| Command::new(&e.command).args(&e.args).spawn())
+        .collect::<io::Result<Vec<Child>>>()?;
+
+    children
+        .into_iter()
+        .try_fold(0, |acc, mut child| match child.wait() {
+            Ok(status) => match status.code() {
+                Some(c) => Ok(acc | c),
+                None => Ok(acc | status.signal().map_or_else(|| 1, |sig| 128 + sig)),
+            },
+            Err(e) => Err(e),
+        })
 }
 
 fn split_args<I>(iter: I) -> (Vec<OsString>, Vec<OsString>)
