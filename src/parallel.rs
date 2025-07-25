@@ -1,12 +1,16 @@
+use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::ExitStatusExt;
 use std::process::{Child, Command, exit};
-use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
+use std::time;
 
+use signal_hook::consts::SIGCHLD;
+use signal_hook::iterator::SignalsInfo;
+use signal_hook::iterator::exfiltrator::origin::WithOrigin;
 use sysinfo::System;
 
 fn usage() {
@@ -106,69 +110,50 @@ pub fn parallel() -> io::Result<()> {
         println!("{e:?}");
     }
 
-    let exit_code = if jobs.len() <= maxjobs && maxload.is_none() {
-        spawn_all(jobs)?
-    } else {
-        pool_jobs(maxjobs, maxload, jobs)?
-    };
-
-    exit(exit_code);
+    exit(pool_jobs(maxjobs, maxload, jobs)?);
 }
 
 fn pool_jobs(maxjobs: usize, maxload: Option<f64>, jobs: Vec<Execution>) -> io::Result<i32> {
-    let (job_tx, job_rx): (mpsc::Sender<Execution>, mpsc::Receiver<Execution>) = mpsc::channel();
-    let (code_tx, code_rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel();
-    let job_rx_arc = Arc::new(Mutex::new(job_rx));
-    for i in 0..maxjobs {
-        let blah = i;
-        let rx = Arc::clone(&job_rx_arc);
-        let tx = code_tx.clone();
-        thread::spawn(move || {
-            while let Ok(e) = rx.lock().unwrap().recv() {
-                println!("executing from pool {blah}");
-                match Command::new(&e.command).args(&e.args).status() {
-                    Ok(status) => {
-                        let _ = tx.send(status.code().unwrap_or(1));
-                    }
-                    Err(_) => {
-                        let _ = tx.send(1);
-                    }
-                };
-            }
-        });
-    }
-
-    let n = jobs.len();
     let mut exit_code = 0;
-
+    let mut jobs_running: HashMap<u32, Child> = HashMap::new();
+    let mut binding = SignalsInfo::<WithOrigin>::new([SIGCHLD])?;
+    let mut signals = binding.forever();
     for job in jobs {
-        let _ = job_tx.send(job);
-    }
-
-    for _ in 0..n {
-        match code_rx.recv() {
-            Ok(code) => exit_code |= code,
-            Err(_) => todo!(),
+        if jobs_running.len() == maxjobs {
+            match signals.next() {
+                Some(origin) if origin.signal == SIGCHLD => {
+                    let pid = origin.process.unwrap().pid;
+                    let mut child = jobs_running.remove(&(pid as u32)).unwrap();
+                    let status = child.wait()?;
+                    exit_code |= match status.code() {
+                        Some(code) => code,
+                        None => status.signal().map_or_else(|| 1, |sig| 128 + sig),
+                    }
+                }
+                _ => unreachable!(),
+            }
         }
+
+        if let Some(maxload) = maxload {
+            wait_for_load(maxload);
+        }
+
+        let child = Command::new(&job.command).args(&job.args).spawn()?;
+        jobs_running.insert(child.id(), child);
+    }
+    for (_, mut child) in jobs_running {
+        exit_code |= child.wait()?.code().unwrap_or(1);
     }
     Ok(exit_code)
 }
 
-fn spawn_all(jobs: Vec<Execution>) -> io::Result<i32> {
-    let children = jobs
-        .iter()
-        .map(|e| Command::new(&e.command).args(&e.args).spawn())
-        .collect::<io::Result<Vec<Child>>>()?;
-
-    children
-        .into_iter()
-        .try_fold(0, |acc, mut child| match child.wait() {
-            Ok(status) => match status.code() {
-                Some(c) => Ok(acc | c),
-                None => Ok(acc | status.signal().map_or_else(|| 1, |sig| 128 + sig)),
-            },
-            Err(e) => Err(e),
-        })
+fn wait_for_load(maxload: f64) {
+    loop {
+        if get_load_average() < maxload {
+            break;
+        }
+        thread::sleep(time::Duration::from_millis(500));
+    }
 }
 
 fn split_args<I>(iter: I) -> (Vec<OsString>, Vec<OsString>)

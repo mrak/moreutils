@@ -7,5 +7,5 @@ edition = "2024"
 chrono = "0.4"
 lexopt = "0.3"
 regex = "1.11"
-signal-hook = "0.3"
+signal-hook = { version = "0.3", features = ["channel","iterator","extended-siginfo"] }
 sysinfo = "0.36"
