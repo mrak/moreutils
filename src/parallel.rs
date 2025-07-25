@@ -80,27 +80,33 @@ pub fn parallel() -> io::Result<()> {
         }
     }
 
-    let jobs: Vec<Execution> = if let Some("--") = args.peek().and_then(|a| a.to_str()) {
-        args.skip(1)
+    let jobs: Vec<Execution> = match args.peek().and_then(|a| a.to_str()) {
+        Some("--") => args
+            .skip(1) // skip --
             .map(|a| Execution {
                 command: OsString::from("sh"),
                 args: vec![OsString::from("-c"), a],
             })
-            .collect()
-    } else {
-        let command = args.next().unwrap();
-        let (fixed_args, parallel_args) = split_args(args);
-        parallel_args
-            .chunks(n_args)
-            .map(|chunk| {
-                let mut fa = fixed_args.clone();
-                fa.extend_from_slice(chunk);
-                Execution {
-                    command: command.clone(),
-                    args: fa,
-                }
-            })
-            .collect()
+            .collect(),
+        Some(_) => {
+            let command = args.next().expect("peek was a Some value");
+            let (fixed_args, parallel_args) = split_args(args);
+            parallel_args
+                .chunks(n_args)
+                .map(|chunk| {
+                    let mut fa = fixed_args.clone();
+                    fa.extend_from_slice(chunk);
+                    Execution {
+                        command: command.clone(),
+                        args: fa,
+                    }
+                })
+                .collect()
+        }
+        None => {
+            usage();
+            exit(1);
+        }
     };
 
     println!("-i {interpolate} -l {maxload:?} -j {maxjobs:?} -n {n_args}");
@@ -137,7 +143,12 @@ fn pool_jobs(maxjobs: usize, maxload: Option<f64>, jobs: Vec<Execution>) -> io::
         }
 
         if let Some(maxload) = maxload {
-            wait_for_load(maxload);
+            loop {
+                if System::load_average().one < maxload {
+                    break;
+                }
+                thread::sleep(time::Duration::from_millis(500));
+            }
         }
 
         let child = Command::new(&job.command).args(&job.args).spawn()?;
@@ -147,15 +158,6 @@ fn pool_jobs(maxjobs: usize, maxload: Option<f64>, jobs: Vec<Execution>) -> io::
         exit_code |= child.wait()?.code().unwrap_or(1);
     }
     Ok(exit_code)
-}
-
-fn wait_for_load(maxload: f64) {
-    loop {
-        if get_load_average() < maxload {
-            break;
-        }
-        thread::sleep(time::Duration::from_millis(500));
-    }
 }
 
 fn split_args<I>(iter: I) -> (Vec<OsString>, Vec<OsString>)
@@ -177,8 +179,4 @@ where
     }
 
     (before, after)
-}
-
-fn get_load_average() -> f64 {
-    System::load_average().one
 }
