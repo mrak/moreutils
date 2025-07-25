@@ -19,7 +19,7 @@ were made where possible to support non-UTF8 filenames.
 - [x] `ifne`
 - [x] `isutf8`
 - [x] `mispipe`
-- [ ] `parallel`
+- [x] `parallel`
 - [x] `pee`
 - [x] `sponge`
 - [x] `ts`
