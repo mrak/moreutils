@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
 use std::io;
@@ -9,8 +8,7 @@ use std::thread;
 use std::time;
 
 use signal_hook::consts::SIGCHLD;
-use signal_hook::iterator::SignalsInfo;
-use signal_hook::iterator::exfiltrator::origin::WithOrigin;
+use signal_hook::iterator::Signals;
 use sysinfo::System;
 
 fn usage() {
@@ -115,22 +113,26 @@ pub fn parallel() -> io::Result<()> {
 
 fn pool_jobs(maxjobs: usize, maxload: Option<f64>, jobs: Vec<Execution>) -> io::Result<i32> {
     let mut exit_code = 0;
-    let mut jobs_running: HashMap<u32, Child> = HashMap::new();
-    let mut binding = SignalsInfo::<WithOrigin>::new([SIGCHLD])?;
+    let mut jobs_running: Vec<Child> = Vec::new();
+    let mut binding = Signals::new([SIGCHLD])?;
     let mut signals = binding.forever();
     for job in jobs {
         if jobs_running.len() == maxjobs {
             match signals.next() {
-                Some(origin) if origin.signal == SIGCHLD => {
-                    let pid = origin.process.unwrap().pid;
-                    let mut child = jobs_running.remove(&(pid as u32)).unwrap();
-                    let status = child.wait()?;
-                    exit_code |= match status.code() {
-                        Some(code) => code,
-                        None => status.signal().map_or_else(|| 1, |sig| 128 + sig),
-                    }
+                Some(SIGCHLD) => {
+                    jobs_running.retain_mut(|child| match child.try_wait() {
+                        Ok(None) => true,
+                        Ok(Some(status)) => {
+                            exit_code |= match status.code() {
+                                Some(code) => code,
+                                None => status.signal().map_or_else(|| 1, |sig| 128 + sig),
+                            };
+                            false
+                        }
+                        Err(_) => true, // ignored, try_wait again later for this process
+                    });
                 }
-                _ => unreachable!(),
+                _ => unreachable!("we only register a SIGCHLD handler"),
             }
         }
 
@@ -139,9 +141,9 @@ fn pool_jobs(maxjobs: usize, maxload: Option<f64>, jobs: Vec<Execution>) -> io::
         }
 
         let child = Command::new(&job.command).args(&job.args).spawn()?;
-        jobs_running.insert(child.id(), child);
+        jobs_running.push(child);
     }
-    for (_, mut child) in jobs_running {
+    for mut child in jobs_running {
         exit_code |= child.wait()?.code().unwrap_or(1);
     }
     Ok(exit_code)
