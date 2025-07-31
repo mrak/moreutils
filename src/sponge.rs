@@ -11,7 +11,7 @@ fn usage() {
 
 struct Args {
     append: bool,
-    file: PathBuf,
+    file: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args, lexopt::Error> {
@@ -28,10 +28,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         }
     }
 
-    Ok(Args {
-        append,
-        file: file.ok_or("missing argument FILE")?,
-    })
+    Ok(Args { append, file })
 }
 
 pub fn sponge() -> io::Result<()> {
@@ -46,13 +43,17 @@ pub fn sponge() -> io::Result<()> {
     let mut buffer = Vec::new();
     stdin.read_to_end(&mut buffer)?;
 
-    OpenOptions::new()
-        .create(true)
-        .append(args.append)
-        .truncate(!args.append)
-        .write(true)
-        .open(args.file)?
-        .write_all(&buffer)?;
+    if let Some(file) = args.file {
+        OpenOptions::new()
+            .create(true)
+            .append(args.append)
+            .truncate(!args.append)
+            .write(true)
+            .open(file)?
+            .write_all(&buffer)?;
+    } else {
+        io::stdout().write_all(&buffer)?;
+    }
 
     Ok(())
 }

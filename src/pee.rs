@@ -7,7 +7,7 @@ use std::{
 };
 
 fn usage() {
-    eprintln!(r#"Usage: [--[no-]ignore-sigpipe] [--[no-]ignore-write-errors] ["command"...]"#);
+    eprintln!(r#"Usage: pee [--[no-]ignore-sigpipe] [--[no-]ignore-write-errors] ["command"...]"#);
 }
 
 struct Args {
