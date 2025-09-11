@@ -27,6 +27,10 @@ were made where possible to support non-UTF8 filenames.
 - [x] `vipe`
 - [x] `zrun`
 
+## Additional tools added
+
+- `pause` - block forever
+
 ## Will not implement
 
 * `lckdo` - deprecated by `flock`

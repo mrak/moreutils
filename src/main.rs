@@ -16,6 +16,7 @@ invoked with. The following programs are included:
   isutf8
   mispipe
   pee
+  pause
   parallel
   sponge
   ts
@@ -42,6 +43,7 @@ fn main() -> io::Result<()> {
         Some("isutf8") => moreutils::isutf8(),
         Some("mispipe") => moreutils::mispipe(),
         Some("parallel") => moreutils::parallel(),
+        Some("pause") => moreutils::pause(),
         Some("pee") => moreutils::pee(),
         Some("sponge") => moreutils::sponge(),
         Some("ts") => moreutils::ts(),

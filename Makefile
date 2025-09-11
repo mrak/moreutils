@@ -1,5 +1,5 @@
 .PHONY: install symlinks uninstall src/errno/errno_generated.rs test
-IMPLEMENTED := chronic combine errno ifdata ifne isutf8 mispipe parallel pee sponge ts vidir vipe zrun
+IMPLEMENTED := chronic combine errno ifdata ifne isutf8 mispipe parallel pause pee sponge ts vidir vipe zrun
 SYMLINKS := $(addprefix ${HOME}/.local/bin/, $(IMPLEMENTED))
 DEV_SYMLINKS := $(addprefix target/debug/, $(IMPLEMENTED))
 
