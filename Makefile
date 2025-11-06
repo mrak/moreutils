@@ -1,4 +1,4 @@
-.PHONY: install symlinks uninstall src/errno/errno_generated.rs test
+.PHONY: install symlinks uninstall src/errno/errno_generated.rs test build submodules
 IMPLEMENTED := chronic combine errno ifdata ifne isutf8 mispipe parallel pause pee sponge ts vidir vipe zrun
 SYMLINKS := $(addprefix ${HOME}/.local/bin/, $(IMPLEMENTED))
 DEV_SYMLINKS := $(addprefix target/debug/, $(IMPLEMENTED))
@@ -23,5 +23,8 @@ src/errno/errno_generated.rs:
 build:
 	cargo build
 
-test: build $(DEV_SYMLINKS)
+submodules:
+	git submodule update
+
+test: submodules build $(DEV_SYMLINKS)
 	./test/bats/bin/bats test/*.bats
