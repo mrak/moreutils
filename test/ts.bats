@@ -99,6 +99,18 @@ teardown() {
 just now three"
 }
 
+@test "Relative time with RFC3339 but : absent from offset" {
+  (
+    echo "$(date -v-2S +%Y-%m-%dT%H:%M:%S%z) one"
+    echo "$(date -v-1S +%Y-%m-%dt%H:%M:%S%z) two"
+    echo "$(date +'%Y-%m-%d %H:%M:%S%z') three"
+  ) > "$TEST_IN"
+  ts -r < "$TEST_IN" > "$TEST_OUT"
+  assert_equal "$(cat "$TEST_OUT")" "2s ago one
+1s ago two
+just now three"
+}
+
 @test "Relative time with RFC2822" {
   (
     echo "$(date -v-2S +"%a, %d %b %Y %H:%M:%S %z") one"

@@ -2,6 +2,8 @@ use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Local;
 use chrono::TimeDelta;
+use chrono::format::Parsed;
+use chrono::format::StrftimeItems;
 use core::convert::From;
 use regex::Captures;
 use regex::Regex;
@@ -217,7 +219,35 @@ fn time_is_relative(
                         }
                     })
             } else if let Some(s) = caps.name("rfc3339") {
-                DateTime::parse_from_rfc3339(s.as_str()).ok()
+                match DateTime::parse_from_rfc3339(s.as_str()) {
+                    Ok(dt) => Some(dt),
+                    Err(_) => {
+                        // parse_from_rfc3339 requires a colon in the offset, so this string must
+                        // not have it. Reproduce the parsing but use %z which doesn't
+                        // contain the colon.
+                        let mut parsed = Parsed::new();
+                        let date_items = StrftimeItems::new("%Y-%m-%d");
+                        let mut remainder = chrono::format::parse_and_remainder(
+                            &mut parsed,
+                            s.as_str(),
+                            date_items,
+                        )
+                        .expect("parsing guaranteed by regex match");
+                        // consume t or T or space, guaranteed by regex match
+                        remainder = &remainder[1..];
+                        let time_items = StrftimeItems::new("%H:%M:%S");
+                        remainder =
+                            chrono::format::parse_and_remainder(&mut parsed, remainder, time_items)
+                                .expect("parsing guaranteed by regex match");
+                        let offset_item = StrftimeItems::new("%z");
+                        let _ = chrono::format::parse_and_remainder(
+                            &mut parsed,
+                            remainder,
+                            offset_item,
+                        );
+                        parsed.to_datetime().ok()
+                    }
+                }
             } else if let Some(s) = caps.name("rfc2822") {
                 DateTime::parse_from_rfc2822(s.as_str()).ok()
             } else if let Some(s) = caps.name("lastlog") {
