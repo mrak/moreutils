@@ -123,6 +123,18 @@ just now three"
 just now three"
 }
 
+@test "Relative time with RFC3164" {
+  (
+    echo "$(date -v-2S +"%b %e %H:%M:%S") one"
+    echo "$(date -v-1S +"%b %e %H:%M:%S") two"
+    echo "$(date +"%b %e %H:%M:%S") three"
+  ) > "$TEST_IN"
+  ts -r < "$TEST_IN" > "$TEST_OUT"
+  assert_equal "$(cat "$TEST_OUT")" "2s ago one
+1s ago two
+just now three"
+}
+
 @test "Relative time with unix timestamps (seconds)" {
   (
     echo "$(date -v-2S +"%s") one"
