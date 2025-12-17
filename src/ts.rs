@@ -205,19 +205,24 @@ fn time_is_relative(
     for line in stdin.lines().map_while(|l| l.ok()) {
         let modified = re.replace(&line, |caps: &Captures| {
             let dt_result = if let Some(s) = caps.name("rfc3164") {
-                let now = Local::now();
                 // RFC3164 doesn't include year or timezone, assume current year/zone
-                let hydrated = format!("{} {}", s.as_str(), now.format("%z %Y"));
-                DateTime::parse_from_str(&hydrated, "%b %e %H:%M:%S %z %Y")
-                    .ok()
-                    .and_then(|parsed| {
-                        // If parsed date is in the future, assume it was last year
-                        if parsed > now {
-                            parsed.with_year(now.year() - 1)
-                        } else {
-                            Some(parsed)
-                        }
-                    })
+                let now = Local::now();
+                let strftime_items = StrftimeItems::new("%b %e %H:%M:%S");
+                let mut parsed = Parsed::new();
+                parsed
+                    .set_year(now.year() as i64)
+                    .and_then(|_| parsed.set_offset(now.offset().local_minus_utc() as i64))
+                    .expect("Cast from i32 and from existing Local datetime");
+                chrono::format::parse(&mut parsed, s.as_str(), strftime_items)
+                    .expect("parsing guaranteed by regex match");
+                parsed.to_datetime().ok().and_then(|datetime| {
+                    // If parsed date is in the future, assume it was last year
+                    if datetime > now {
+                        datetime.with_year(now.year() - 1)
+                    } else {
+                        Some(datetime)
+                    }
+                })
             } else if let Some(s) = caps.name("rfc3339") {
                 match DateTime::parse_from_rfc3339(s.as_str()) {
                     Ok(dt) => Some(dt),
@@ -225,6 +230,14 @@ fn time_is_relative(
                         // parse_from_rfc3339 requires a colon in the offset, so this string must
                         // not have it. Reproduce the parsing but use %z which doesn't
                         // contain the colon.
+                        //
+                        // Steps:
+                        // 1. parse date
+                        // 2. consume space, t, or T
+                        // 3. parse time+offset
+                        //
+                        // Step (2) cannot be represented by StrftimeItems, so we
+                        // need to split into two parse and skip one character inbetween
                         let mut parsed = Parsed::new();
                         let date_items = StrftimeItems::new("%Y-%m-%d");
                         let mut remainder = chrono::format::parse_and_remainder(
@@ -235,16 +248,9 @@ fn time_is_relative(
                         .expect("parsing guaranteed by regex match");
                         // consume t or T or space, guaranteed by regex match
                         remainder = &remainder[1..];
-                        let time_items = StrftimeItems::new("%H:%M:%S");
-                        remainder =
-                            chrono::format::parse_and_remainder(&mut parsed, remainder, time_items)
-                                .expect("parsing guaranteed by regex match");
-                        let offset_item = StrftimeItems::new("%z");
-                        let _ = chrono::format::parse_and_remainder(
-                            &mut parsed,
-                            remainder,
-                            offset_item,
-                        );
+                        let time_items = StrftimeItems::new("%H:%M:%S%z");
+                        chrono::format::parse_and_remainder(&mut parsed, remainder, time_items)
+                            .expect("parsing guaranteed by regex match");
                         parsed.to_datetime().ok()
                     }
                 }
