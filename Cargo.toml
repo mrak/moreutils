@@ -3,14 +3,14 @@ name = "moreutils"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-chrono = "0.4"
-lexopt = "0.3"
-regex = "1.11"
-signal-hook = "0.3"
-sysinfo = "0.36"
-
 [profile.release]
 lto = true
 codegen-units = 1
 strip = true
+
+[dependencies]
+chrono = "0.4"
+lexopt = "0.3"
+regex = "1.12"
+signal-hook = "0.3"
+sysinfo = "0.37"

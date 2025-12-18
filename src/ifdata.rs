@@ -5,6 +5,8 @@ use std::net::Ipv4Addr;
 use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::process;
+use std::thread;
+use std::time;
 use sysinfo::MacAddr;
 use sysinfo::NetworkData;
 use sysinfo::Networks;
@@ -20,12 +22,23 @@ enum Op {
     PrintBroadcast,
     PrintMtu,
     PrintMac,
+    PrintInputStats,
+    PrintInputPackets,
+    PrintInputBytes,
+    PrintInputErrors,
+    PrintOutputStats,
+    PrintOutputPackets,
+    PrintOutputBytes,
+    PrintOutputErrors,
+    PrintInputBytesOverSecond,
+    PrintOutputBytesOverSecond,
 }
 
 #[derive(Default, Debug)]
 struct Args {
     ops: Vec<Op>,
     interface: String,
+    refresh_one_second: bool,
 }
 
 fn usage() {
@@ -42,6 +55,13 @@ fn usage() {
     println!("  -pb   Print out the broadcast address");
     println!("  -pm   Print out the MTU");
     println!("  -ph   Print out the hardware address");
+
+    println!("  -sip  Print out the number of input packets");
+    println!("  -sib  Print out the number of input bytes");
+    println!("  -sie  Print out the number of input errors");
+    println!("  -sop  Print out the number of input packets");
+    println!("  -sob  Print out the number of input bytes");
+    println!("  -soe  Print out the number of input errors");
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -62,6 +82,22 @@ fn parse_args() -> Result<Args, String> {
             "-pb" => args.ops.push(Op::PrintBroadcast),
             "-pm" => args.ops.push(Op::PrintMtu),
             "-ph" => args.ops.push(Op::PrintMac),
+            "-si" => args.ops.push(Op::PrintInputStats),
+            "-sip" => args.ops.push(Op::PrintInputPackets),
+            "-sib" => args.ops.push(Op::PrintInputBytes),
+            "-sie" => args.ops.push(Op::PrintInputErrors),
+            "-so" => args.ops.push(Op::PrintOutputStats),
+            "-sop" => args.ops.push(Op::PrintOutputPackets),
+            "-sob" => args.ops.push(Op::PrintOutputBytes),
+            "-soe" => args.ops.push(Op::PrintOutputErrors),
+            "-bips" => {
+                args.ops.push(Op::PrintInputBytesOverSecond);
+                args.refresh_one_second = true;
+            }
+            "-bops" => {
+                args.ops.push(Op::PrintOutputBytesOverSecond);
+                args.refresh_one_second = true;
+            }
             _ => iface = Some(arg),
         }
     }
@@ -86,7 +122,11 @@ pub fn ifdata() -> io::Result<()> {
         process::exit(1);
     });
 
-    let networks = Networks::new_with_refreshed_list();
+    let mut networks = Networks::new_with_refreshed_list();
+    if args.refresh_one_second {
+        thread::sleep(time::Duration::from_secs(1));
+        networks.refresh(true);
+    }
     let maybe_interface = networks.get(&args.interface);
 
     for op in args.ops.iter() {
@@ -159,7 +199,60 @@ pub fn ifdata() -> io::Result<()> {
                     println!("{}", infos.join(" "));
                 }
             },
-            // _ => todo!(),
+            Op::PrintInputPackets => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!("{}", x.total_packets_received()),
+            },
+            Op::PrintInputBytes => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!("{}", x.total_received()),
+            },
+            Op::PrintInputErrors => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!("{}", x.total_errors_on_received()),
+            },
+            Op::PrintInputStats => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!(
+                    "{} {} {}",
+                    x.total_received(),
+                    x.total_packets_received(),
+                    x.total_errors_on_received(),
+                ),
+            },
+            Op::PrintOutputPackets => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!("{}", x.total_packets_transmitted()),
+            },
+            Op::PrintOutputBytes => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!("{}", x.total_transmitted()),
+            },
+            Op::PrintOutputErrors => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!("{}", x.total_errors_on_transmitted()),
+            },
+            Op::PrintOutputStats => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => println!(
+                    "{} {} {}",
+                    x.total_transmitted(),
+                    x.total_packets_transmitted(),
+                    x.total_errors_on_transmitted(),
+                ),
+            },
+            Op::PrintInputBytesOverSecond => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => {
+                    println!("{}", x.received(),)
+                }
+            },
+            Op::PrintOutputBytesOverSecond => match maybe_interface {
+                None => fail(&args.interface),
+                Some(x) => {
+                    println!("{}", x.transmitted(),)
+                }
+            },
         }
     }
 
